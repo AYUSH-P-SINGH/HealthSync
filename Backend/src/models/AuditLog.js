@@ -26,6 +26,13 @@ const auditLogSchema = new mongoose.Schema(
         'PROFILE_UPDATED',
         'PROFILE_PICTURE_UPLOADED',
         'PROFILE_PICTURE_DELETED',
+        // Hospital <-> Patient linking (consent-based)
+        'PATIENT_LOOKUP',
+        'PATIENT_LINK_REQUESTED',
+        'PATIENT_LINK_APPROVED',
+        'PATIENT_LINK_REJECTED',
+        'PATIENT_LINK_REVOKED',
+        'PATIENT_DISCHARGED',
       ],
       index: true,
     },

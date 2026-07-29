@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const User = require('../models/User');
+const HospitalPatient = require('../models/HospitalPatient');
 const auditService = require('./audit.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -234,9 +235,14 @@ const getDashboardSummary = async (userId) => {
   ).length;
   const completenessPercent = Math.round((filledCount / profileFields.length) * 100);
 
-  // ─── Placeholder Counts (to be wired later) ──────────
-  // These will query Appointment.countDocuments({ patient: userId, ... })
-  // and MedicalRecord.countDocuments({ patient: userId }) once models exist.
+  // ─── Counts ──────────────────────────────────────────
+  // Appointment/record/prescription counts remain placeholders until those
+  // models exist; hospital-link counts are real.
+  const [linkedHospitals, pendingHospitalRequests] = await Promise.all([
+    HospitalPatient.countDocuments({ patient: userId, status: 'active' }),
+    HospitalPatient.countDocuments({ patient: userId, status: 'pending' }),
+  ]);
+
   const upcomingAppointments = 0;
   const totalRecords = 0;
   const activePrescriptions = 0;
@@ -248,6 +254,8 @@ const getDashboardSummary = async (userId) => {
       upcomingAppointments,
       totalRecords,
       activePrescriptions,
+      linkedHospitals,
+      pendingHospitalRequests,
     },
   };
 };

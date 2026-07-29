@@ -5,6 +5,7 @@
 const { Router } = require('express');
 const authRoutes = require('./auth.routes');
 const patientRoutes = require('./patient.routes');
+const hospitalRoutes = require('./hospital.routes');
 
 const router = Router();
 
@@ -14,9 +15,11 @@ router.use('/auth', authRoutes);
 // Mount patient (user) routes
 router.use('/patients', patientRoutes);
 
+// Mount hospital routes
+router.use('/hospitals', hospitalRoutes);
+
 // Future route modules:
 // router.use('/records', recordRoutes);
-// router.use('/hospitals', hospitalRoutes);
 
 module.exports = router;
 

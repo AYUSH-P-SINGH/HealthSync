@@ -2,7 +2,7 @@
  * Patient profile validators.
  * Validation chains for patient profile update endpoint.
  */
-const { body } = require('express-validator');
+const { body, param, query } = require('express-validator');
 
 /**
  * PATCH /api/patients/profile
@@ -101,6 +101,32 @@ const updateProfileValidator = [
     .withMessage('Emergency contact phone must be a valid 10-digit Indian mobile number.'),
 ];
 
+// ─── Hospital linking (consent) ──────────────────────────
+
+/** GET /hospitals?status= */
+const listHospitalLinksValidator = [
+  query('status')
+    .optional()
+    .isIn(['pending', 'active', 'rejected', 'discharged'])
+    .withMessage('Invalid status filter.'),
+];
+
+/** PATCH /hospitals/:linkId/respond */
+const respondValidator = [
+  param('linkId').isMongoId().withMessage('Invalid link id.'),
+  body('action')
+    .isIn(['approve', 'reject'])
+    .withMessage("Action must be 'approve' or 'reject'."),
+];
+
+/** PATCH /hospitals/:linkId/revoke */
+const revokeValidator = [
+  param('linkId').isMongoId().withMessage('Invalid link id.'),
+];
+
 module.exports = {
   updateProfileValidator,
+  listHospitalLinksValidator,
+  respondValidator,
+  revokeValidator,
 };

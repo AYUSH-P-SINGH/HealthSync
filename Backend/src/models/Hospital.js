@@ -195,6 +195,10 @@ hospitalSchema.methods.toJSON = function () {
   delete obj.loginAttempts;
   delete obj.lockUntil;
   delete obj.__v;
+  // Hospitals live in their own collection and have no stored role field, but
+  // API consumers (login, /auth/me) rely on `role` to route the account to the
+  // right dashboard — expose it explicitly like User.js and Admin.js do.
+  obj.role = 'hospital';
   return obj;
 };
 

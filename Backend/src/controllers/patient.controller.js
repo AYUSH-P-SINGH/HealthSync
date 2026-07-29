@@ -4,6 +4,7 @@
  * Delegates all business logic to patient.service.
  */
 const patientService = require('../services/patient.service');
+const patientLinkService = require('../services/patientLink.service');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiResponse = require('../utils/ApiResponse');
 
@@ -66,10 +67,57 @@ const getDashboardSummary = asyncHandler(async (req, res) => {
   res.status(response.statusCode).json(response);
 });
 
+// ─── Hospital linking (consent) ────────────────────────
+
+/**
+ * GET /api/patients/hospitals?status=
+ * pending = incoming requests, active = linked hospitals.
+ */
+const listHospitalLinks = asyncHandler(async (req, res) => {
+  const result = await patientLinkService.listPatientLinks(req.user.id, req.query.status);
+
+  const response = ApiResponse.ok(result);
+  res.status(response.statusCode).json(response);
+});
+
+/**
+ * PATCH /api/patients/hospitals/:linkId/respond   body: { action: 'approve'|'reject' }
+ */
+const respondToHospitalRequest = asyncHandler(async (req, res) => {
+  const result = await patientLinkService.respondToRequest(
+    req.user.id,
+    req.params.linkId,
+    req.body.action,
+    req.ip,
+    req.headers['user-agent']
+  );
+
+  const response = ApiResponse.ok(result.link, result.message);
+  res.status(response.statusCode).json(response);
+});
+
+/**
+ * PATCH /api/patients/hospitals/:linkId/revoke
+ */
+const revokeHospitalLink = asyncHandler(async (req, res) => {
+  const result = await patientLinkService.revokeLink(
+    req.user.id,
+    req.params.linkId,
+    req.ip,
+    req.headers['user-agent']
+  );
+
+  const response = ApiResponse.ok(result.link, result.message);
+  res.status(response.statusCode).json(response);
+});
+
 module.exports = {
   getProfile,
   updateProfile,
   uploadProfilePicture,
   deleteProfilePicture,
   getDashboardSummary,
+  listHospitalLinks,
+  respondToHospitalRequest,
+  revokeHospitalLink,
 };

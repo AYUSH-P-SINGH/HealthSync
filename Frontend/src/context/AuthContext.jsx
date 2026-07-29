@@ -54,10 +54,15 @@ export function AuthProvider({ children }) {
     const restoreSession = async () => {
       const stored = readStoredAuth();
 
+      // Older hospital responses may lack a `role` field (the Hospital model
+      // has no stored role) — fall back to the role we saved at login time so
+      // a missing field can never silently demote a hospital to "patient".
+      const resolveRole = (apiRole) => (apiRole ? toAppRole(apiRole) : stored.role || "patient");
+
       if (stored.accessToken) {
         try {
           const data = await authApi.me(stored.accessToken);
-          if (!cancelled) setAuth({ accessToken: stored.accessToken, user: data.data, role: toAppRole(data.data.role) });
+          if (!cancelled) setAuth({ accessToken: stored.accessToken, user: data.data, role: resolveRole(data.data.role) });
           return;
         } catch {
           // fall through to silent refresh
@@ -68,7 +73,7 @@ export function AuthProvider({ children }) {
         const refreshed = await authApi.refresh();
         const newToken = refreshed.data.accessToken;
         const me = await authApi.me(newToken);
-        if (!cancelled) setAuth({ accessToken: newToken, user: me.data, role: toAppRole(me.data.role) });
+        if (!cancelled) setAuth({ accessToken: newToken, user: me.data, role: resolveRole(me.data.role) });
       } catch {
         if (!cancelled) setAuth({ accessToken: null, user: null, role: null });
       }
@@ -98,7 +103,14 @@ export function AuthProvider({ children }) {
     const data = await authApi.login({ email, password, role: toApiRole(appRole) });
     const nextAccessToken = data.data.accessToken;
     const nextUser = data.data.user;
-    setAuth({ accessToken: nextAccessToken, user: nextUser, role: toAppRole(nextUser.role) });
+    // The backend authenticated this login against the requested role, so the
+    // role the user picked is authoritative — never let a missing `role` field
+    // on the response (e.g. hospital accounts) default the session to patient.
+    setAuth({
+      accessToken: nextAccessToken,
+      user: nextUser,
+      role: nextUser.role ? toAppRole(nextUser.role) : appRole,
+    });
     return data;
   };
 

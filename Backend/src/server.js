@@ -24,6 +24,21 @@ const startServer = async () => {
       console.log(`  Environment: ${process.env.NODE_ENV}`);
       console.log(`  Port:        ${PORT}`);
       console.log(`  URL:         http://localhost:${PORT}`);
+      // Diagnostic: confirms which route modules THIS process actually loaded.
+      console.log(`  Routes:      /api/auth, /api/patients, /api/hospitals`);
+    });
+
+    // Fail loudly if the port is already taken by a stale process — otherwise
+    // an old server keeps answering requests with outdated code.
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(
+          `\nPort ${PORT} is already in use — another (possibly stale) server is running.\n` +
+            `Kill it and retry. On Windows: netstat -ano | findstr :${PORT}  then  taskkill /F /PID <pid>\n`
+        );
+        process.exit(1);
+      }
+      throw err;
     });
 
     // ─── Graceful Shutdown ─────────────────────────────

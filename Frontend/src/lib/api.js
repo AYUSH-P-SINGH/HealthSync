@@ -81,4 +81,34 @@ export const patientApi = {
   },
   deleteProfilePicture: (token) =>
     request("/patients/profile/picture", { method: "DELETE", token }),
+
+  // ─── Hospital linking (consent) ───
+  listHospitalLinks: (token, status) =>
+    request(`/patients/hospitals${status ? `?status=${status}` : ""}`, { token }),
+  respondToHospitalRequest: (linkId, action, token) =>
+    request(`/patients/hospitals/${linkId}/respond`, { method: "PATCH", body: { action }, token }),
+  revokeHospitalLink: (linkId, token) =>
+    request(`/patients/hospitals/${linkId}/revoke`, { method: "PATCH", token }),
+};
+
+/**
+ * Hospital endpoints (Backend/src/routes/hospital.routes.js).
+ * All require a hospital-role access token.
+ */
+export const hospitalApi = {
+  getProfile: (token) => request("/hospitals/profile", { token }),
+  updateProfile: (payload, token) =>
+    request("/hospitals/profile", { method: "PATCH", body: payload, token }),
+  getDashboard: (token) => request("/hospitals/dashboard", { token }),
+
+  // ─── Patient linking (consent-based) ───
+  // `query` is a Patient ID (HS-XXXXXXXX) or email the patient shared.
+  lookupPatient: (query, token) =>
+    request("/hospitals/patients/lookup", { method: "POST", body: { query }, token }),
+  addPatient: (query, token) =>
+    request("/hospitals/patients", { method: "POST", body: { query }, token }),
+  listPatients: (token, status) =>
+    request(`/hospitals/patients${status ? `?status=${status}` : ""}`, { token }),
+  dischargePatient: (linkId, token) =>
+    request(`/hospitals/patients/${linkId}/discharge`, { method: "PATCH", token }),
 };

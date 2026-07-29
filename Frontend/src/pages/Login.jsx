@@ -58,7 +58,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login({ email: form.email, password: form.password, appRole: role });
-      navigate(role === "hospital" ? "/dashboard/hospital" : "/dashboard/patient");
+      // replace: true keeps the login page out of history, so the browser
+      // Back button from the dashboard never lands back on the login form.
+      navigate(role === "hospital" ? "/dashboard/hospital" : "/dashboard/patient", {
+        replace: true,
+      });
     } catch (err) {
       setError(err.message || "Invalid email or password.");
     } finally {

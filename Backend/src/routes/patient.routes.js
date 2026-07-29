@@ -8,7 +8,12 @@ const patientController = require('../controllers/patient.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
-const { updateProfileValidator } = require('../validators/patient.validator');
+const {
+  updateProfileValidator,
+  listHospitalLinksValidator,
+  respondValidator,
+  revokeValidator,
+} = require('../validators/patient.validator');
 const { profileUpload } = require('../config/upload.config');
 
 const router = Router();
@@ -43,5 +48,26 @@ router.delete('/profile/picture', patientController.deleteProfilePicture);
 
 // Get dashboard summary (profile completeness, counts)
 router.get('/dashboard', patientController.getDashboardSummary);
+
+// ─── Hospital linking (consent) ────────────────────────
+
+// List my hospital links (pending = requests awaiting my approval)
+router.get('/hospitals', listHospitalLinksValidator, validate, patientController.listHospitalLinks);
+
+// Approve / reject a pending hospital request
+router.patch(
+  '/hospitals/:linkId/respond',
+  respondValidator,
+  validate,
+  patientController.respondToHospitalRequest
+);
+
+// Revoke an active hospital link
+router.patch(
+  '/hospitals/:linkId/revoke',
+  revokeValidator,
+  validate,
+  patientController.revokeHospitalLink
+);
 
 module.exports = router;
