@@ -5,6 +5,8 @@
  */
 const { Router } = require('express');
 const hospitalController = require('../controllers/hospital.controller');
+const recordController = require('../controllers/record.controller');
+const consentController = require('../controllers/consent.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
@@ -14,6 +16,14 @@ const {
   listPatientsValidator,
   linkIdValidator,
 } = require('../validators/hospital.validator');
+const {
+  linkRecordValidator,
+  linkRecordsListValidator,
+} = require('../validators/record.validator');
+const {
+  claimConsentValidator,
+  consentRecordsValidator,
+} = require('../validators/consent.validator');
 
 const router = Router();
 
@@ -55,6 +65,40 @@ router.patch(
   linkIdValidator,
   validate,
   hospitalController.dischargePatient
+);
+
+// ─── Medical records (active link required) ────────────
+
+// Create a record for a linked patient (prescriptions run safety checks)
+router.post(
+  '/patients/:linkId/records',
+  linkRecordValidator,
+  validate,
+  recordController.createRecordForPatient
+);
+
+// List records this hospital created for a linked patient
+router.get(
+  '/patients/:linkId/records',
+  linkRecordsListValidator,
+  validate,
+  recordController.listRecordsForPatient
+);
+
+// ─── Consent grants (time-bound OTP/QR access) ─────────
+
+// Redeem a patient's access code (plain code or scanned QR payload)
+router.post('/consents/claim', claimConsentValidator, validate, consentController.claimConsent);
+
+// List grants claimed by this hospital
+router.get('/consents', consentController.listHospitalConsents);
+
+// Read records through a still-valid grant (scope + expiry enforced)
+router.get(
+  '/consents/:consentId/records',
+  consentRecordsValidator,
+  validate,
+  consentController.getConsentRecords
 );
 
 module.exports = router;

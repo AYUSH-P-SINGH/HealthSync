@@ -88,6 +88,20 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ─── Clinical Safety Profile ─────────────────────
+    // Known drug/substance allergies — powers automatic allergy alerts
+    // whenever a new prescription is recorded.
+    allergies: {
+      type: [{ type: String, trim: true, maxlength: 100 }],
+      default: [],
+    },
+    // Ongoing conditions (e.g. "Type 2 Diabetes") — shown on the timeline
+    // and shared with hospitals through consented access.
+    chronicConditions: {
+      type: [{ type: String, trim: true, maxlength: 200 }],
+      default: [],
+    },
+
     // ─── Email Verification ──────────────────────────
     isVerified: {
       type: Boolean,

@@ -5,6 +5,8 @@
  */
 const { Router } = require('express');
 const patientController = require('../controllers/patient.controller');
+const recordController = require('../controllers/record.controller');
+const consentController = require('../controllers/consent.controller');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
@@ -14,6 +16,17 @@ const {
   respondValidator,
   revokeValidator,
 } = require('../validators/patient.validator');
+const {
+  recordBodyValidator,
+  listRecordsValidator,
+  recordIdValidator,
+  updateRecordValidator,
+  prescriptionStatusValidator,
+} = require('../validators/record.validator');
+const {
+  issueConsentValidator,
+  consentIdValidator,
+} = require('../validators/consent.validator');
 const { profileUpload } = require('../config/upload.config');
 
 const router = Router();
@@ -68,6 +81,45 @@ router.patch(
   revokeValidator,
   validate,
   patientController.revokeHospitalLink
+);
+
+// ─── Medical records ───────────────────────────────────
+
+// List my records (filters: type, hospitalId, condition, from, to, q)
+router.get('/records', listRecordsValidator, validate, recordController.listMyRecords);
+
+// Add a self-reported record
+router.post('/records', recordBodyValidator, validate, recordController.createMyRecord);
+
+// Chronological health timeline (grouped by month, with filter facets)
+router.get('/timeline', listRecordsValidator, validate, recordController.getMyTimeline);
+
+// Edit / delete one of my self-reported records
+router.patch('/records/:recordId', updateRecordValidator, validate, recordController.updateMyRecord);
+router.delete('/records/:recordId', recordIdValidator, validate, recordController.deleteMyRecord);
+
+// Mark a prescription as active / completed
+router.patch(
+  '/records/:recordId/prescription',
+  prescriptionStatusValidator,
+  validate,
+  recordController.setPrescriptionStatus
+);
+
+// ─── Consent grants (time-bound OTP/QR access) ─────────
+
+// Issue a scoped, time-bound access code
+router.post('/consents', issueConsentValidator, validate, consentController.issueConsent);
+
+// List my consent grants (with usage + status)
+router.get('/consents', consentController.listMyConsents);
+
+// Revoke a grant early
+router.patch(
+  '/consents/:consentId/revoke',
+  consentIdValidator,
+  validate,
+  consentController.revokeConsent
 );
 
 module.exports = router;

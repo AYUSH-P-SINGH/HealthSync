@@ -99,6 +99,27 @@ const updateProfileValidator = [
     .trim()
     .matches(/^[6-9]\d{9}$/)
     .withMessage('Emergency contact phone must be a valid 10-digit Indian mobile number.'),
+
+  // ─── Clinical Safety Profile ─────────────────────────
+  body('allergies')
+    .optional()
+    .isArray({ max: 30 })
+    .withMessage('Allergies must be an array (max 30 entries).'),
+  body('allergies.*')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Each allergy must be between 1 and 100 characters.'),
+
+  body('chronicConditions')
+    .optional()
+    .isArray({ max: 30 })
+    .withMessage('Chronic conditions must be an array (max 30 entries).'),
+  body('chronicConditions.*')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Each condition must be between 1 and 200 characters.'),
 ];
 
 // ─── Hospital linking (consent) ──────────────────────────

@@ -33,6 +33,19 @@ const auditLogSchema = new mongoose.Schema(
         'PATIENT_LINK_REJECTED',
         'PATIENT_LINK_REVOKED',
         'PATIENT_DISCHARGED',
+        // Medical records
+        'RECORD_CREATED',
+        'RECORD_UPDATED',
+        'RECORD_DELETED',
+        // Time-bound consent grants (OTP/QR scoped access)
+        'CONSENT_ISSUED',
+        'CONSENT_CLAIMED',
+        'CONSENT_REVOKED',
+        'CONSENT_RECORDS_ACCESSED',
+        // Health advisories
+        'ADVISORY_PUBLISHED',
+        'ADVISORY_UPDATED',
+        'ADVISORY_DELETED',
       ],
       index: true,
     },

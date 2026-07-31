@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/User');
 const HospitalPatient = require('../models/HospitalPatient');
+const recordService = require('./record.service');
 const auditService = require('./audit.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -57,6 +58,14 @@ const buildUpdateObject = (body) => {
     if (value !== undefined) {
       update[field] = value;
     }
+  }
+
+  // Array fields (clinical safety profile) — replace wholesale when provided.
+  const cleanList = (arr, max) =>
+    [...new Set(arr.map((v) => String(v).trim()).filter(Boolean))].slice(0, max);
+  if (Array.isArray(body.allergies)) update.allergies = cleanList(body.allergies, 30);
+  if (Array.isArray(body.chronicConditions)) {
+    update.chronicConditions = cleanList(body.chronicConditions, 30);
   }
 
   return update;
@@ -236,16 +245,16 @@ const getDashboardSummary = async (userId) => {
   const completenessPercent = Math.round((filledCount / profileFields.length) * 100);
 
   // ─── Counts ──────────────────────────────────────────
-  // Appointment/record/prescription counts remain placeholders until those
-  // models exist; hospital-link counts are real.
-  const [linkedHospitals, pendingHospitalRequests] = await Promise.all([
+  // Appointment count remains a placeholder until that module exists;
+  // record/prescription and hospital-link counts are real.
+  const [linkedHospitals, pendingHospitalRequests, recordCounts] = await Promise.all([
     HospitalPatient.countDocuments({ patient: userId, status: 'active' }),
     HospitalPatient.countDocuments({ patient: userId, status: 'pending' }),
+    recordService.countsForPatient(userId),
   ]);
 
   const upcomingAppointments = 0;
-  const totalRecords = 0;
-  const activePrescriptions = 0;
+  const { totalRecords, activePrescriptions } = recordCounts;
 
   return {
     user: user.toJSON(),
