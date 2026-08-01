@@ -28,11 +28,14 @@ import {
   UserMinus,
   Droplets,
   X,
+  QrCode,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { hospitalApi } from "../lib/api.js";
 import { initialsOf, formatDate, titleCase } from "../lib/format.js";
 import TopbarActions from "../components/TopbarActions.jsx";
+import ConsentAccessView from "../components/ConsentAccessView.jsx";
+import PatientRecordsPanel from "../components/PatientRecordsPanel.jsx";
 
 /*
   Hospital staff dashboard, wired to the real backend:
@@ -49,6 +52,7 @@ import TopbarActions from "../components/TopbarActions.jsx";
 const SIDEBAR_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { key: "patients", label: "Patients", icon: Users },
+  { key: "consents", label: "Consent Access", icon: QrCode },
   { key: "messages", label: "Messages", icon: MessageSquare },
   { key: "calendar", label: "Calendar", icon: CalendarDays },
   { key: "records", label: "Records", icon: FileText },
@@ -364,6 +368,10 @@ export default function HospitalDashboard() {
               setSearch={setSearch}
               onChanged={() => refresh().catch(() => {})}
             />
+          ) : activeSidebarItem === "consents" ? (
+            <SimpleView title="Consent Access">
+              <ConsentAccessView accessToken={accessToken} />
+            </SimpleView>
           ) : activeSidebarItem === "messages" ? (
             <SimpleView title="Messages">
               <EmptyState
@@ -935,6 +943,7 @@ function PatientsView({ accessToken, search, setSearch, onChanged }) {
   const [notice, setNotice] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [recordsLink, setRecordsLink] = useState(null); // link whose records panel is open
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1137,21 +1146,32 @@ function PatientsView({ accessToken, search, setSearch, onChanged }) {
                         </div>
                       </td>
                       <td className="py-3 pr-4">
-                        {(link.status === "active" || link.status === "pending") && (
-                          <button
-                            type="button"
-                            disabled={busyId === link._id}
-                            onClick={() => endLink(link)}
-                            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60"
-                          >
-                            {busyId === link._id ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <UserMinus size={13} />
-                            )}
-                            {link.status === "active" ? "Discharge" : "Withdraw"}
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {isActive && (
+                            <button
+                              type="button"
+                              onClick={() => setRecordsLink(link)}
+                              className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700"
+                            >
+                              <FileText size={13} /> Records
+                            </button>
+                          )}
+                          {(link.status === "active" || link.status === "pending") && (
+                            <button
+                              type="button"
+                              disabled={busyId === link._id}
+                              onClick={() => endLink(link)}
+                              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60"
+                            >
+                              {busyId === link._id ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <UserMinus size={13} />
+                              )}
+                              {link.status === "active" ? "Discharge" : "Withdraw"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1173,6 +1193,15 @@ function PatientsView({ accessToken, search, setSearch, onChanged }) {
           onChanged();
         }}
       />
+
+      {/* Per-patient records slide-over (view + add, with safety alerts) */}
+      {recordsLink && (
+        <PatientRecordsPanel
+          link={recordsLink}
+          accessToken={accessToken}
+          onClose={() => setRecordsLink(null)}
+        />
+      )}
     </div>
   );
 }

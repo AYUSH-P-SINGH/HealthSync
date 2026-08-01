@@ -28,11 +28,20 @@ import {
   ShieldCheck,
   Copy,
   FileCode,
+  History,
+  QrCode,
+  ShieldPlus,
+
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { patientApi, API_ORIGIN } from "../lib/api.js";
 import { initialsOf, formatDate, titleCase } from "../lib/format.js";
 import TopbarActions from "../components/TopbarActions.jsx";
+import TimelineView from "../components/TimelineView.jsx";
+import RecordsView from "../components/RecordsView.jsx";
+import ConsentsView from "../components/ConsentsView.jsx";
+import HealthView from "../components/HealthView.jsx";
+import AdvisoryBanner from "../components/AdvisoryBanner.jsx";
 
 /*
   Patient-facing dashboard, wired to the real backend:
@@ -53,7 +62,13 @@ const SIDEBAR_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { key: "insurance", label: "Insurance & Consent", icon: ShieldCheck },
   { key: "appointments", label: "Appointments", icon: CalendarDays },
+
+  { key: "timeline", label: "Health Timeline", icon: History },
+
   { key: "records", label: "Records", icon: FileText },
+  { key: "consents", label: "Consent & Sharing", icon: QrCode },
+  { key: "health", label: "Health Advisories", icon: ShieldPlus },
+  { key: "appointments", label: "Appointments", icon: CalendarDays },
   { key: "messages", label: "Messages", icon: MessageSquare },
 ];
 
@@ -382,6 +397,7 @@ export default function PatientDashboard() {
               onPhotoChange={handlePhotoChange}
               onProfileSaved={handleProfileSaved}
               onSummaryChanged={() => refresh().catch(() => {})}
+              onOpenHealthTab={() => goTo("health")}
               onStatClick={{
                 completeness: () => setPanelOpen(true),
                 appointments: () => goTo("appointments"),
@@ -395,8 +411,32 @@ export default function PatientDashboard() {
                 },
               }}
             />
+
           ) : activeSidebarItem === "insurance" ? (
             <InsurancePatientView profile={profile} accessToken={accessToken} />
+
+          ) : activeSidebarItem === "timeline" ? (
+            <SimpleView title="Health Timeline">
+              <TimelineView accessToken={accessToken} />
+            </SimpleView>
+          ) : activeSidebarItem === "records" ? (
+            <SimpleView title="Health Records">
+              <RecordsView
+                key={recordsTab}
+                accessToken={accessToken}
+                initialTab={recordsTab}
+                onCountsChanged={() => refresh().catch(() => {})}
+              />
+            </SimpleView>
+          ) : activeSidebarItem === "consents" ? (
+            <SimpleView title="Consent & Sharing">
+              <ConsentsView accessToken={accessToken} />
+            </SimpleView>
+          ) : activeSidebarItem === "health" ? (
+            <SimpleView title="Health Advisories & Tips">
+              <HealthView accessToken={accessToken} />
+            </SimpleView>
+
           ) : activeSidebarItem === "appointments" ? (
             <SimpleView title="Appointments">
               <EmptyState
@@ -404,50 +444,6 @@ export default function PatientDashboard() {
                 title="No appointments yet"
                 message="You have no upcoming appointments. Online booking with your hospital opens soon — appointments scheduled for you will appear here."
               />
-            </SimpleView>
-          ) : activeSidebarItem === "records" ? (
-            <SimpleView title="Health Records">
-              <div className="flex items-center gap-2 border-b border-slate-100">
-                {[
-                  { key: "records", label: "Medical Records", count: summary?.totalRecords ?? 0 },
-                  { key: "prescriptions", label: "Prescriptions", count: summary?.activePrescriptions ?? 0 },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setRecordsTab(tab.key)}
-                    className={`flex items-center gap-2 border-b-2 px-3 pb-3 text-sm font-semibold transition ${
-                      recordsTab === tab.key
-                        ? "border-brand-600 text-brand-600"
-                        : "border-transparent text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    {tab.label}
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                        recordsTab === tab.key ? "bg-brand-50 text-brand-600" : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-6">
-                {recordsTab === "records" ? (
-                  <EmptyState
-                    icon={FileText}
-                    title="No medical records yet"
-                    message="Records shared by your hospitals after visits will be listed here automatically."
-                  />
-                ) : (
-                  <EmptyState
-                    icon={Pill}
-                    title="No active prescriptions"
-                    message="Prescriptions issued by your physicians will appear here once your hospital adds them."
-                  />
-                )}
-              </div>
             </SimpleView>
           ) : activeSidebarItem === "messages" ? (
             <SimpleView title="Messages">
@@ -507,6 +503,7 @@ function DashboardView({
   onPhotoChange,
   onProfileSaved,
   onSummaryChanged,
+  onOpenHealthTab,
   onStatClick,
 }) {
   return (
@@ -539,6 +536,9 @@ function DashboardView({
           </button>
         )}
       </div>
+
+      {/* Active health advisory (warning/critical only) */}
+      <AdvisoryBanner accessToken={accessToken} onOpenHealthTab={onOpenHealthTab} />
 
       {saveSuccess && !editing && (
         <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">

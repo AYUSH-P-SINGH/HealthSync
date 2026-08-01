@@ -7,6 +7,7 @@ const authRoutes = require('./auth.routes');
 const patientRoutes = require('./patient.routes');
 const hospitalRoutes = require('./hospital.routes');
 const insuranceRoutes = require('./insurance.routes');
+const advisoryRoutes = require('./advisory.routes');
 
 const router = Router();
 
@@ -21,6 +22,9 @@ router.use('/hospitals', hospitalRoutes);
 
 // Mount insurance routes
 router.use('/insurance', insuranceRoutes);
+// Mount health advisory routes (patient-facing + admin management)
+router.use('/advisories', advisoryRoutes);
+
 
 module.exports = router;
 

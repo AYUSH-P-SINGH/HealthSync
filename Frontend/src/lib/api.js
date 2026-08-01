@@ -51,6 +51,15 @@ async function request(path, { method = "GET", body, formData, token } = {}) {
   return payload;
 }
 
+/** Build a query string from an object, skipping empty values. */
+function qs(params = {}) {
+  const entries = Object.entries(params).filter(
+    ([, v]) => v !== undefined && v !== null && v !== ""
+  );
+  if (entries.length === 0) return "";
+  return `?${entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&")}`;
+}
+
 export const authApi = {
   // Patient registration lives at the plain /register endpoint (the
   // teammate's original patient-only route); hospital gets its own path.
@@ -91,6 +100,7 @@ export const patientApi = {
   revokeHospitalLink: (linkId, token) =>
     request(`/patients/hospitals/${linkId}/revoke`, { method: "PATCH", token }),
 
+
   // ─── Insurance & Claims (consent) ───
   listInsuranceRequests: (token) =>
     request("/patients/insurance-requests", { token }),
@@ -104,6 +114,31 @@ export const patientApi = {
     request("/patients/claims", { method: "POST", body: payload, token }),
   listClaims: (token) =>
     request("/patients/claims", { token }),
+
+  // ─── Medical records & timeline ───
+  // filters: { type, hospitalId ('self' = self-reported), condition, from, to, q }
+  listRecords: (token, filters) => request(`/patients/records${qs(filters)}`, { token }),
+  createRecord: (payload, token) =>
+    request("/patients/records", { method: "POST", body: payload, token }),
+  getTimeline: (token, filters) => request(`/patients/timeline${qs(filters)}`, { token }),
+  updateRecord: (recordId, payload, token) =>
+    request(`/patients/records/${recordId}`, { method: "PATCH", body: payload, token }),
+  deleteRecord: (recordId, token) =>
+    request(`/patients/records/${recordId}`, { method: "DELETE", token }),
+  setPrescriptionStatus: (recordId, active, token) =>
+    request(`/patients/records/${recordId}/prescription`, {
+      method: "PATCH",
+      body: { active },
+      token,
+    }),
+
+  // ─── Consent grants (time-bound OTP/QR access) ───
+  issueConsent: (payload, token) =>
+    request("/patients/consents", { method: "POST", body: payload, token }),
+  listConsents: (token) => request("/patients/consents", { token }),
+  revokeConsent: (consentId, token) =>
+    request(`/patients/consents/${consentId}/revoke`, { method: "PATCH", token }),
+
 };
 
 /**
@@ -126,6 +161,33 @@ export const hospitalApi = {
     request(`/hospitals/patients${status ? `?status=${status}` : ""}`, { token }),
   dischargePatient: (linkId, token) =>
     request(`/hospitals/patients/${linkId}/discharge`, { method: "PATCH", token }),
+
+  // ─── Medical records (active link required) ───
+  createPatientRecord: (linkId, payload, token) =>
+    request(`/hospitals/patients/${linkId}/records`, { method: "POST", body: payload, token }),
+  listPatientRecords: (linkId, token, filters) =>
+    request(`/hospitals/patients/${linkId}/records${qs(filters)}`, { token }),
+
+  // ─── Consent grants (claim a patient's OTP/QR code) ───
+  claimConsent: (code, token) =>
+    request("/hospitals/consents/claim", { method: "POST", body: { code }, token }),
+  listConsents: (token) => request("/hospitals/consents", { token }),
+  getConsentRecords: (consentId, token, type) =>
+    request(`/hospitals/consents/${consentId}/records${qs({ type })}`, { token }),
+};
+
+/**
+ * Health advisories (Backend/src/routes/advisory.routes.js).
+ * `getActive` works for any signed-in role; the rest are admin-only.
+ */
+export const advisoryApi = {
+  getActive: (token) => request("/advisories/active", { token }),
+  list: (token) => request("/advisories", { token }),
+  create: (payload, token) => request("/advisories", { method: "POST", body: payload, token }),
+  update: (advisoryId, payload, token) =>
+    request(`/advisories/${advisoryId}`, { method: "PATCH", body: payload, token }),
+  remove: (advisoryId, token) =>
+    request(`/advisories/${advisoryId}`, { method: "DELETE", token }),
 };
 
 /**
