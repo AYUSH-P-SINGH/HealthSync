@@ -111,6 +111,44 @@ const revokeHospitalLink = asyncHandler(async (req, res) => {
   res.status(response.statusCode).json(response);
 });
 
+// ─── Insurance & Claims (consent) ────────────────────────
+
+const insuranceService = require('../services/insurance.service');
+
+const listInsuranceRequests = asyncHandler(async (req, res) => {
+  const result = await insuranceService.getPatientInsuranceRequests(req.user.id);
+  res.status(200).json(ApiResponse.success(result, 'Insurance requests retrieved successfully.'));
+});
+
+const respondToInsuranceRequest = asyncHandler(async (req, res) => {
+  const result = await insuranceService.respondToInsuranceRequest(
+    req.user.id,
+    req.params.linkId,
+    req.body
+  );
+  res.status(200).json(ApiResponse.success(result, `Insurance request ${req.body.action}d successfully.`));
+});
+
+const revokeInsuranceConsent = asyncHandler(async (req, res) => {
+  const result = await insuranceService.revokeInsuranceConsent(req.user.id, req.params.linkId);
+  res.status(200).json(ApiResponse.success(result, 'Insurance access consent revoked successfully.'));
+});
+
+const listPatientPolicies = asyncHandler(async (req, res) => {
+  const result = await insuranceService.getPolicies({ patient: req.user.id });
+  res.status(200).json(ApiResponse.success(result, 'Patient insurance policies retrieved successfully.'));
+});
+
+const submitPatientClaim = asyncHandler(async (req, res) => {
+  const result = await insuranceService.submitClaim(req.user.id, req.body);
+  res.status(201).json(ApiResponse.created(result, 'Insurance claim submitted successfully.'));
+});
+
+const listPatientClaims = asyncHandler(async (req, res) => {
+  const result = await insuranceService.getClaims({ patient: req.user.id });
+  res.status(200).json(ApiResponse.success(result, 'Patient claims retrieved successfully.'));
+});
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -120,4 +158,10 @@ module.exports = {
   listHospitalLinks,
   respondToHospitalRequest,
   revokeHospitalLink,
+  listInsuranceRequests,
+  respondToInsuranceRequest,
+  revokeInsuranceConsent,
+  listPatientPolicies,
+  submitPatientClaim,
+  listPatientClaims,
 };

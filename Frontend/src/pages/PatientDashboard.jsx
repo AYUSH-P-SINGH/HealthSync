@@ -25,9 +25,13 @@ import {
   Building2,
   Check,
   X,
+  ShieldCheck,
+  Copy,
+  FileCode,
   History,
   QrCode,
   ShieldPlus,
+
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { patientApi, API_ORIGIN } from "../lib/api.js";
@@ -56,7 +60,11 @@ import AdvisoryBanner from "../components/AdvisoryBanner.jsx";
 
 const SIDEBAR_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid },
+  { key: "insurance", label: "Insurance & Consent", icon: ShieldCheck },
+  { key: "appointments", label: "Appointments", icon: CalendarDays },
+
   { key: "timeline", label: "Health Timeline", icon: History },
+
   { key: "records", label: "Records", icon: FileText },
   { key: "consents", label: "Consent & Sharing", icon: QrCode },
   { key: "health", label: "Health Advisories", icon: ShieldPlus },
@@ -403,6 +411,10 @@ export default function PatientDashboard() {
                 },
               }}
             />
+
+          ) : activeSidebarItem === "insurance" ? (
+            <InsurancePatientView profile={profile} accessToken={accessToken} />
+
           ) : activeSidebarItem === "timeline" ? (
             <SimpleView title="Health Timeline">
               <TimelineView accessToken={accessToken} />
@@ -424,6 +436,7 @@ export default function PatientDashboard() {
             <SimpleView title="Health Advisories & Tips">
               <HealthView accessToken={accessToken} />
             </SimpleView>
+
           ) : activeSidebarItem === "appointments" ? (
             <SimpleView title="Appointments">
               <EmptyState
@@ -1345,5 +1358,447 @@ function StatCard({ icon: Icon, label, value, footer, onClick }) {
       </div>
       {footer}
     </button>
+  );
+}
+
+function InsurancePatientView({ profile, accessToken }) {
+  const [subTab, setSubTab] = useState("requests");
+  const [copied, setCopied] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [policies, setPolicies] = useState([]);
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [selectedPermissions, setSelectedPermissions] = useState({});
+  const [selectedDisclosure, setSelectedDisclosure] = useState(null);
+
+  // Claim Form State
+  const [claimForm, setClaimForm] = useState({
+    policyId: "",
+    hospitalName: "",
+    diagnosis: "",
+    claimAmount: "",
+  });
+  const [submittingClaim, setSubmittingClaim] = useState(false);
+
+  const healthSyncId = profile?.healthSyncId || profile?.patientId || "HS-PENDING";
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(healthSyncId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [reqRes, polRes, clmRes] = await Promise.all([
+        patientApi.listInsuranceRequests(accessToken),
+        patientApi.listPolicies(accessToken),
+        patientApi.listClaims(accessToken),
+      ]);
+      setRequests(reqRes.data || []);
+      setPolicies(polRes.data || []);
+      setClaims(clmRes.data || []);
+    } catch (err) {
+      setError(err.message || "Failed to load insurance data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRespond = async (linkId, action) => {
+    setError("");
+    setMessage("");
+    try {
+      const permissions = selectedPermissions[linkId];
+      await patientApi.respondToInsuranceRequest(linkId, { action, permissions }, accessToken);
+      setMessage(`Insurance access request ${action}d successfully.`);
+      loadData();
+    } catch (err) {
+      setError(err.message || "Failed to respond to request.");
+    }
+  };
+
+  const handleRevoke = async (linkId) => {
+    setError("");
+    setMessage("");
+    try {
+      await patientApi.revokeInsuranceConsent(linkId, accessToken);
+      setMessage("Insurance access consent revoked.");
+      loadData();
+    } catch (err) {
+      setError(err.message || "Failed to revoke access.");
+    }
+  };
+
+  const handleClaimSubmit = async (e) => {
+    e.preventDefault();
+    if (!claimForm.policyId) {
+      setError("Please select an active policy.");
+      return;
+    }
+    setError("");
+    setMessage("");
+    setSubmittingClaim(true);
+    try {
+      await patientApi.submitClaim(
+        {
+          policyId: claimForm.policyId,
+          hospitalName: claimForm.hospitalName,
+          diagnosis: claimForm.diagnosis,
+          claimAmount: Number(claimForm.claimAmount),
+        },
+        accessToken
+      );
+      setMessage("Insurance claim submitted successfully!");
+      setClaimForm({ policyId: "", hospitalName: "", diagnosis: "", claimAmount: "" });
+      loadData();
+    } catch (err) {
+      setError(err.message || "Failed to submit claim.");
+    } finally {
+      setSubmittingClaim(false);
+    }
+  };
+
+  const togglePermissionCheckbox = (linkId, perm, defaultPerms) => {
+    const current = selectedPermissions[linkId] || defaultPerms || [];
+    const updated = current.includes(perm)
+      ? current.filter((p) => p !== perm)
+      : [...current, perm];
+    setSelectedPermissions({ ...selectedPermissions, [linkId]: updated });
+  };
+
+  const pendingRequests = requests.filter((r) => r.status === "pending");
+  const approvedConnections = requests.filter((r) => r.status === "approved");
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      {/* Digital HealthSync ID Card */}
+      <div className="rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-900 via-brand-800 to-indigo-900 p-6 text-white shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <span className="inline-block rounded-md bg-brand-500/30 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-200">
+              Permanent Digital Healthcare Identity
+            </span>
+            <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+              {healthSyncId}
+            </h2>
+            <p className="mt-1 text-xs text-brand-200">
+              Share this HealthSync ID with trusted hospitals and insurance providers to initiate consent-based record sharing.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyId}
+            className="flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-xs font-bold text-brand-900 shadow-md transition hover:bg-brand-50"
+          >
+            {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+            {copied ? "Copied ID!" : "Copy HealthSync ID"}
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">
+          {message}
+        </div>
+      )}
+
+      {/* Sub Tabs */}
+      <div className="flex space-x-2 border-b border-slate-200 pb-2">
+        {[
+          { key: "requests", label: `Consent Requests (${pendingRequests.length})` },
+          { key: "policies", label: `Issued Policies (${policies.length})` },
+          { key: "claims", label: `My Claims (${claims.length})` },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key)}
+            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              subTab === tab.key
+                ? "bg-brand-600 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab 1: Requests & Active Connections */}
+      {subTab === "requests" && (
+        <div className="space-y-6">
+          {/* Pending Requests */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="font-display text-base font-bold text-slate-900 mb-1">
+              Incoming Insurance Access Requests
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Insurance companies must request your explicit consent before viewing your medical history. Choose exact permissions below.
+            </p>
+
+            {pendingRequests.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No pending access requests.</p>
+            ) : (
+              <div className="space-y-4">
+                {pendingRequests.map((req) => {
+                  const companyName = req.insurance?.companyName || "Insurance Provider";
+                  const linkPerms = selectedPermissions[req._id] || req.permissions || [];
+                  return (
+                    <div key={req._id} className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm">{companyName}</h4>
+                          <p className="text-xs text-slate-600 mt-0.5">Purpose: {req.purpose}</p>
+                        </div>
+                        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                          Pending Approval
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="block text-[11px] font-semibold text-slate-700 mb-1.5">
+                          Configure Granted Data Permissions:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: "medicalHistory", label: "Medical History" },
+                            { key: "allergies", label: "Allergies" },
+                            { key: "prescriptions", label: "Prescriptions" },
+                            { key: "reports", label: "Lab Reports" },
+                            { key: "bloodGroup", label: "Blood Group" },
+                          ].map(({ key, label }) => (
+                            <label key={key} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={linkPerms.includes(key)}
+                                onChange={() => togglePermissionCheckbox(req._id, key, req.permissions)}
+                                className="rounded text-brand-600 focus:ring-brand-500"
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2 border-t border-amber-200/60">
+                        <button
+                          onClick={() => handleRespond(req._id, "reject")}
+                          className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Decline Request
+                        </button>
+                        <button
+                          onClick={() => handleRespond(req._id, "approve")}
+                          className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
+                        >
+                          Approve Access
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Active Connections */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="font-display text-base font-bold text-slate-900 mb-3">
+              Active Insurance Connections
+            </h3>
+
+            {approvedConnections.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No active insurance connections.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {approvedConnections.map((req) => (
+                  <div key={req._id} className="flex items-center justify-between py-3">
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs">{req.insurance?.companyName || "Insurance Provider"}</p>
+                      <p className="text-[11px] text-slate-500">
+                        Granted Permissions: {(req.permissions || []).join(", ")}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRevoke(req._id)}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                    >
+                      Revoke Access
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Policies & Disclosures */}
+      {subTab === "policies" && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+          <h3 className="font-display text-base font-bold text-slate-900">
+            My Active Insurance Policies & Digital Disclosures
+          </h3>
+
+          {policies.length === 0 ? (
+            <p className="text-xs text-slate-400 py-6 text-center">No issued policies found under your HealthSync account.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {policies.map((p) => (
+                <div key={p._id} className="rounded-xl border border-slate-200 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-brand-900">{p.policyNumber}</span>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 uppercase">{p.status}</span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-800">{p.insurance?.companyName}</p>
+                  <p className="text-xs text-slate-500">Coverage: <strong className="text-emerald-700">₹{p.coverageAmount?.toLocaleString("en-IN")}</strong></p>
+                  <p className="text-xs text-slate-500">Type: {p.type}</p>
+                  <div className="pt-2 border-t border-slate-100 flex justify-between text-[11px] text-slate-400">
+                    <span>Issued: {new Date(p.issueDate).toLocaleDateString()}</span>
+                    <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                      <ShieldCheck size={13} /> SHA-256 Verified
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 3: Claims */}
+      {subTab === "claims" && (
+        <div className="space-y-6">
+          {/* Submit Claim Form */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="font-display text-base font-bold text-slate-900 mb-1">
+              Submit Insurance Claim
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Submit a digital claim to your insurer for hospital treatment or diagnostic medical expenses.
+            </p>
+
+            <form onSubmit={handleClaimSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Select Policy</label>
+                <select
+                  value={claimForm.policyId}
+                  onChange={(e) => setClaimForm({ ...claimForm, policyId: e.target.value })}
+                  required
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-brand-500"
+                >
+                  <option value="">-- Choose Active Policy --</option>
+                  {policies.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.policyNumber} &mdash; {p.insurance?.companyName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Hospital / Medical Center Name</label>
+                <input
+                  type="text"
+                  value={claimForm.hospitalName}
+                  onChange={(e) => setClaimForm({ ...claimForm, hospitalName: e.target.value })}
+                  required
+                  placeholder="e.g. Apollo Hospital"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Diagnosis / Treatment Description</label>
+                <input
+                  type="text"
+                  value={claimForm.diagnosis}
+                  onChange={(e) => setClaimForm({ ...claimForm, diagnosis: e.target.value })}
+                  required
+                  placeholder="e.g. Acute Appendicitis Surgery"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Claim Amount (₹)</label>
+                <input
+                  type="number"
+                  value={claimForm.claimAmount}
+                  onChange={(e) => setClaimForm({ ...claimForm, claimAmount: e.target.value })}
+                  required
+                  min={100}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={submittingClaim}
+                  className="rounded-xl bg-brand-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {submittingClaim ? "Submitting..." : "Submit Claim"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Claims History */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="font-display text-base font-bold text-slate-900 mb-3">
+              Claims History & Status
+            </h3>
+
+            {claims.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No claims submitted yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {claims.map((c) => (
+                  <div key={c._id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-slate-900">{c.claimNumber}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          c.status === "approved"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : c.status === "rejected"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}>
+                          {c.status}
+                        </span>
+                      </div>
+                      <p className="text-slate-700 font-semibold mt-1">{c.hospitalName} &bull; {c.diagnosis}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-900 font-bold text-sm">₹{c.claimAmount?.toLocaleString("en-IN")}</p>
+                      {c.approvedAmount > 0 && (
+                        <p className="text-emerald-700 font-semibold text-[11px]">Approved: ₹{c.approvedAmount.toLocaleString("en-IN")}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -60,9 +60,14 @@ export default function Login() {
       await login({ email: form.email, password: form.password, appRole: role });
       // replace: true keeps the login page out of history, so the browser
       // Back button from the dashboard never lands back on the login form.
-      navigate(role === "hospital" ? "/dashboard/hospital" : "/dashboard/patient", {
-        replace: true,
-      });
+      navigate(
+        role === "hospital"
+          ? "/dashboard/hospital"
+          : role === "insurance"
+          ? "/dashboard/insurance"
+          : "/dashboard/patient",
+        { replace: true }
+      );
     } catch (err) {
       setError(err.message || "Invalid email or password.");
     } finally {
@@ -187,7 +192,15 @@ export default function Login() {
           disabled={submitting}
           className="w-full rounded-xl bg-brand-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {submitting ? "Logging in..." : `Log in as ${role === "hospital" ? "Hospital" : "Patient"}`}
+          {submitting
+            ? "Logging in..."
+            : `Log in as ${
+                role === "hospital"
+                  ? "Hospital"
+                  : role === "insurance"
+                  ? "Insurance Company"
+                  : "Patient"
+              }`}
         </button>
       </form>
 

@@ -65,6 +65,7 @@ export const authApi = {
   // teammate's original patient-only route); hospital gets its own path.
   registerPatient: (payload) => request("/auth/register", { method: "POST", body: payload }),
   registerHospital: (payload) => request("/auth/register/hospital", { method: "POST", body: payload }),
+  registerInsurance: (payload) => request("/auth/register/insurance", { method: "POST", body: payload }),
   // `role` must be 'user' (patient) or 'hospital'.
   login: (payload) => request("/auth/login", { method: "POST", body: payload }),
   verifyEmail: (token) => request("/auth/verify-email", { method: "POST", body: { token } }),
@@ -99,6 +100,21 @@ export const patientApi = {
   revokeHospitalLink: (linkId, token) =>
     request(`/patients/hospitals/${linkId}/revoke`, { method: "PATCH", token }),
 
+
+  // ─── Insurance & Claims (consent) ───
+  listInsuranceRequests: (token) =>
+    request("/patients/insurance-requests", { token }),
+  respondToInsuranceRequest: (linkId, payload, token) =>
+    request(`/patients/insurance-requests/${linkId}/respond`, { method: "PATCH", body: payload, token }),
+  revokeInsuranceConsent: (linkId, token) =>
+    request(`/patients/insurance-requests/${linkId}/revoke`, { method: "PATCH", token }),
+  listPolicies: (token) =>
+    request("/patients/policies", { token }),
+  submitClaim: (payload, token) =>
+    request("/patients/claims", { method: "POST", body: payload, token }),
+  listClaims: (token) =>
+    request("/patients/claims", { token }),
+
   // ─── Medical records & timeline ───
   // filters: { type, hospitalId ('self' = self-reported), condition, from, to, q }
   listRecords: (token, filters) => request(`/patients/records${qs(filters)}`, { token }),
@@ -122,6 +138,7 @@ export const patientApi = {
   listConsents: (token) => request("/patients/consents", { token }),
   revokeConsent: (consentId, token) =>
     request(`/patients/consents/${consentId}/revoke`, { method: "PATCH", token }),
+
 };
 
 /**
@@ -171,4 +188,27 @@ export const advisoryApi = {
     request(`/advisories/${advisoryId}`, { method: "PATCH", body: payload, token }),
   remove: (advisoryId, token) =>
     request(`/advisories/${advisoryId}`, { method: "DELETE", token }),
+};
+
+/**
+ * Insurance company endpoints (Backend/src/routes/insurance.routes.js).
+ * All require an insurance-role access token.
+ */
+export const insuranceApi = {
+  getProfile: (token) => request("/insurance/profile", { token }),
+  getDashboard: (token) => request("/insurance/dashboard", { token }),
+  searchPatient: (healthSyncId, token) =>
+    request(`/insurance/search/${healthSyncId}`, { token }),
+  requestAccess: (payload, token) =>
+    request("/insurance/request-access", { method: "POST", body: payload, token }),
+  listPatients: (token, status) =>
+    request(`/insurance/patients${status ? `?status=${status}` : ""}`, { token }),
+  getPatientRecords: (patientId, token) =>
+    request(`/insurance/patient/${patientId}/records`, { token }),
+  issuePolicy: (payload, token) =>
+    request("/insurance/policy", { method: "POST", body: payload, token }),
+  listPolicies: (token) => request("/insurance/policies", { token }),
+  listClaims: (token) => request("/insurance/claims", { token }),
+  updateClaimStatus: (claimId, payload, token) =>
+    request(`/insurance/claims/${claimId}/status`, { method: "PATCH", body: payload, token }),
 };

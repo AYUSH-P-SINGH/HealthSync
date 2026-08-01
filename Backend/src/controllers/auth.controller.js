@@ -58,6 +58,52 @@ const registerHospital = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/auth/register/insurance
+ */
+const registerInsurance = asyncHandler(async (req, res) => {
+  const {
+    companyName,
+    email,
+    mobileNumber,
+    password,
+    registrationNumber,
+    street,
+    city,
+    state,
+    pincode,
+    country,
+    policyTypes,
+    operatingStates,
+    website,
+  } = req.body;
+  const ip = req.ip;
+  const userAgent = req.headers['user-agent'];
+
+  const result = await authService.registerInsurance(
+    {
+      companyName,
+      email,
+      mobileNumber,
+      password,
+      registrationNumber,
+      street,
+      city,
+      state,
+      pincode,
+      country,
+      policyTypes,
+      operatingStates,
+      website,
+    },
+    ip,
+    userAgent
+  );
+
+  const response = ApiResponse.created(result.user, result.message);
+  res.status(response.statusCode).json(response);
+});
+
+/**
  * POST /api/auth/login
  */
 const login = asyncHandler(async (req, res) => {
@@ -226,6 +272,7 @@ const changePassword = asyncHandler(async (req, res) => {
 module.exports = {
   register,
   registerHospital,
+  registerInsurance,
   login,
   logout,
   logoutAll,

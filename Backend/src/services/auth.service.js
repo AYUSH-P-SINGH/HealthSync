@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const UAParser = require('ua-parser-js');
 const User = require('../models/User');
 const Hospital = require('../models/Hospital');
+const Insurance = require('../models/Insurance');
 const Admin = require('../models/Admin');
 const tokenService = require('./token.service');
 const auditService = require('./audit.service');
@@ -469,11 +470,164 @@ const loginAdmin = async (email, password, ip, userAgent) => {
 };
 
 /**
+ * Login an insurance organization (Insurance collection).
+ */
+const loginInsurance = async (email, password, ip, userAgent) => {
+  const insurance = await Insurance.findOne({ email }).select('+password +loginAttempts +lockUntil');
+
+  if (!insurance) {
+    throw ApiError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
+  }
+
+  if (insurance.isLocked()) {
+    auditService.logAuthEvent({
+      userId: insurance._id,
+      action: 'LOGIN_FAILED',
+      ip,
+      userAgent,
+      success: false,
+      metadata: { reason: 'account_locked', role: ROLES.INSURANCE },
+    });
+    throw ApiError.forbidden(MESSAGES.ACCOUNT_LOCKED);
+  }
+
+  const isMatch = await insurance.comparePassword(password);
+
+  if (!isMatch) {
+    await insurance.incrementLoginAttempts();
+
+    const updatedInsurance = await Insurance.findById(insurance._id).select('+loginAttempts +lockUntil');
+    if (updatedInsurance.isLocked()) {
+      auditService.logAuthEvent({
+        userId: insurance._id,
+        action: 'ACCOUNT_LOCKED',
+        ip,
+        userAgent,
+        success: false,
+        metadata: { loginAttempts: updatedInsurance.loginAttempts, role: ROLES.INSURANCE },
+      });
+      logger.warn('Insurance account locked due to failed attempts', { insuranceId: insurance._id, ip });
+    }
+
+    auditService.logAuthEvent({
+      userId: insurance._id,
+      action: 'LOGIN_FAILED',
+      ip,
+      userAgent,
+      success: false,
+      metadata: { reason: 'invalid_password', role: ROLES.INSURANCE },
+    });
+    throw ApiError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
+  }
+
+  if (insurance.isActive === false) {
+    throw ApiError.forbidden('This insurance account has been deactivated.');
+  }
+
+  insurance.loginAttempts = 0;
+  insurance.lockUntil = null;
+  insurance.lastLogin = new Date();
+  insurance.lastLoginIP = ip || null;
+  insurance.lastLoginDevice = parseDevice(userAgent);
+  await insurance.save();
+
+  const accessToken = tokenService.generateAccessToken(insurance._id, ROLES.INSURANCE);
+  const refreshTokenRaw = tokenService.generateRefreshToken();
+
+  await tokenService.saveRefreshToken(insurance._id, refreshTokenRaw, ip, userAgent);
+
+  auditService.logAuthEvent({
+    userId: insurance._id,
+    action: 'LOGIN',
+    ip,
+    userAgent,
+    success: true,
+    metadata: { role: ROLES.INSURANCE },
+  });
+
+  logger.info('Insurance organization logged in', { insuranceId: insurance._id, ip });
+
+  return {
+    user: insurance.toJSON(),
+    accessToken,
+    refreshToken: refreshTokenRaw,
+  };
+};
+
+/**
+ * Admin onboard new insurance organization.
+ */
+const registerInsurance = async (insuranceData, ip, userAgent) => {
+  const {
+    companyName,
+    email,
+    mobileNumber,
+    password,
+    registrationNumber,
+    street,
+    city,
+    state,
+    pincode,
+    country,
+    policyTypes,
+    operatingStates,
+    website,
+  } = insuranceData;
+
+  const existingEmail = await Insurance.findOne({ email });
+  if (existingEmail) {
+    throw ApiError.conflict('An insurance company with this email address already exists.');
+  }
+
+  const existingMobile = await Insurance.findOne({ mobileNumber });
+  if (existingMobile) {
+    throw ApiError.conflict('An insurance company with this contact mobile number already exists.');
+  }
+
+  const existingReg = await Insurance.findOne({ registrationNumber });
+  if (existingReg) {
+    throw ApiError.conflict('An insurance company with this IRDAI registration number already exists.');
+  }
+
+  const insurance = await Insurance.create({
+    companyName,
+    email,
+    mobileNumber,
+    password,
+    registrationNumber,
+    address: { street, city, state, pincode, country },
+    policyTypes: policyTypes || ['Individual Health', 'Family Floater', 'Critical Illness', 'Senior Citizen'],
+    operatingStates: operatingStates || ['All India'],
+    website,
+    isVerified: true,
+  });
+
+  auditService.logAuthEvent({
+    userId: insurance._id,
+    action: 'REGISTER',
+    ip,
+    userAgent,
+    success: true,
+    metadata: { role: ROLES.INSURANCE },
+  });
+
+  logger.info('Insurance organization registered', { insuranceId: insurance._id, email });
+
+  return {
+    user: insurance.toJSON(),
+    message: 'Insurance organization onboarded successfully.',
+  };
+};
+
+/**
  * Login dispatcher.
  */
 const login = async (email, password, role, ip, userAgent) => {
   if (role === ROLES.HOSPITAL) {
     return loginHospital(email, password, ip, userAgent);
+  }
+  if (role === ROLES.INSURANCE) {
+    return loginInsurance(email, password, ip, userAgent);
   }
   if (role === ROLES.ADMIN) {
     return loginAdmin(email, password, ip, userAgent);
@@ -536,6 +690,11 @@ const refresh = async (refreshTokenRaw, ip, userAgent) => {
   if (!account) {
     account = await Hospital.findById(userId);
     role = account ? ROLES.HOSPITAL : null;
+  }
+
+  if (!account) {
+    account = await Insurance.findById(userId);
+    role = account ? ROLES.INSURANCE : null;
   }
 
   if (!account) {
@@ -602,12 +761,13 @@ const logout = async (userId, refreshTokenRaw, ip, userAgent) => {
 const getCurrentUser = async (userId, role) => {
   let Model = User;
   if (role === ROLES.HOSPITAL) Model = Hospital;
+  else if (role === ROLES.INSURANCE) Model = Insurance;
   else if (role === ROLES.ADMIN || role === 'superadmin') Model = Admin;
 
   const account = await Model.findById(userId);
 
   if (!account) {
-    throw ApiError.notFound(role === ROLES.HOSPITAL ? MESSAGES.HOSPITAL_NOT_FOUND : MESSAGES.USER_NOT_FOUND);
+    throw ApiError.notFound('Account not found.');
   }
 
   return { user: account.toJSON() };
@@ -829,6 +989,7 @@ const changePassword = async (userId, role, currentPassword, newPassword, ip, us
 module.exports = {
   register,
   registerHospital,
+  registerInsurance,
   login,
   refresh,
   logout,

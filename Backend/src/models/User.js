@@ -46,6 +46,12 @@ const userSchema = new mongoose.Schema(
       enum: ['user'],
       default: 'user',
     },
+    healthSyncId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
 
     // ─── Patient Profile Fields ─────────────────────
     dob: {
@@ -182,13 +188,17 @@ userSchema.virtual('age').get(function () {
  * Formatted patient ID: HS-XXXXXXXX (first 8 hex chars of _id).
  */
 userSchema.virtual('patientId').get(function () {
+  if (this.healthSyncId) return this.healthSyncId;
   if (!this._id) return null;
   return `HS-${this._id.toString().slice(0, 8).toUpperCase()}`;
 });
 
-// ─── Pre-save Hook: Hash Password ──────────────────────
+// ─── Pre-save Hook: Hash Password & HealthSync ID ──────
 // Mongoose 9 no longer passes a `next` callback to pre-hooks; use an async function instead.
 userSchema.pre('save', async function () {
+  if (!this.healthSyncId && this._id) {
+    this.healthSyncId = `HS-${this._id.toString().slice(0, 8).toUpperCase()}`;
+  }
   if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, bcryptSaltRounds);
 });

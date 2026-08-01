@@ -33,6 +33,16 @@ const auditLogSchema = new mongoose.Schema(
         'PATIENT_LINK_REJECTED',
         'PATIENT_LINK_REVOKED',
         'PATIENT_DISCHARGED',
+        // Insurance & Claims (consent-based)
+        'INSURANCE_ACCESS_REQUESTED',
+        'INSURANCE_CONSENT_APPROVED',
+        'INSURANCE_CONSENT_REJECTED',
+        'INSURANCE_CONSENT_REVOKED',
+        'INSURANCE_VIEWED_RECORDS',
+        'INSURANCE_POLICY_ISSUED',
+        'CLAIM_SUBMITTED',
+        'CLAIM_STATUS_UPDATED',
+
         // Medical records
         'RECORD_CREATED',
         'RECORD_UPDATED',
@@ -46,6 +56,7 @@ const auditLogSchema = new mongoose.Schema(
         'ADVISORY_PUBLISHED',
         'ADVISORY_UPDATED',
         'ADVISORY_DELETED',
+
       ],
       index: true,
     },
