@@ -12,11 +12,13 @@ const STORAGE_KEY = "healthsync_auth";
 // term and doesn't need to know about the admin/superadmin distinction.
 const toApiRole = (appRole) => {
   if (appRole === "hospital") return "hospital";
+  if (appRole === "insurance") return "insurance";
   if (appRole === "admin") return "admin";
   return "user";
 };
 const toAppRole = (apiRole) => {
   if (apiRole === "hospital") return "hospital";
+  if (apiRole === "insurance") return "insurance";
   if (apiRole === "admin" || apiRole === "superadmin") return "admin";
   return "patient";
 };
@@ -99,6 +101,8 @@ export function AuthProvider({ children }) {
 
   const registerHospital = (payload) => authApi.registerHospital(payload);
 
+  const registerInsurance = (payload) => authApi.registerInsurance(payload);
+
   const login = async ({ email, password, appRole }) => {
     const data = await authApi.login({ email, password, role: toApiRole(appRole) });
     const nextAccessToken = data.data.accessToken;
@@ -132,6 +136,7 @@ export function AuthProvider({ children }) {
       loading,
       registerPatient,
       registerHospital,
+      registerInsurance,
       login,
       logout,
     }),

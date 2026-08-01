@@ -27,25 +27,56 @@ export default function AuthLayout({ title, subtitle, role, onRoleChange, showRo
 
           {/* Role toggle */}
           {showRoleToggle && (
-            <div className="mt-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-              {[
-                { key: "patient", label: "Patient", Icon: User },
-                { key: "hospital", label: "Hospital", Icon: Building2 },
-              ].map(({ key, label, Icon }) => (
+            <div className="mt-6 space-y-2">
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
                 <button
-                  key={key}
                   type="button"
-                  onClick={() => onRoleChange(key)}
-                  className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    role === key
-                      ? "bg-white text-brand-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
+                  onClick={() => onRoleChange('patient')}
+                  className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                    role === 'patient'
+                      ? 'bg-white text-brand-700 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  <Icon size={16} />
-                  {label}
+                  <User size={16} />
+                  Patient
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => onRoleChange(role === 'insurance' ? 'insurance' : 'hospital')}
+                  className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                    role === 'hospital' || role === 'insurance'
+                      ? 'bg-white text-brand-700 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Building2 size={16} />
+                  Organization
+                </button>
+              </div>
+
+              {(role === 'hospital' || role === 'insurance') && (
+                <div className="flex justify-center gap-2 rounded-lg bg-brand-50/60 p-1 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => onRoleChange('hospital')}
+                    className={`flex-1 rounded-md py-1.5 transition ${
+                      role === 'hospital' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    🏥 Hospital Provider
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRoleChange('insurance')}
+                    className={`flex-1 rounded-md py-1.5 transition ${
+                      role === 'insurance' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    🛡️ Insurance Company
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

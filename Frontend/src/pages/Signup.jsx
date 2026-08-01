@@ -19,26 +19,35 @@ const HOSPITAL_TYPES = [
 export default function Signup() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { registerPatient, registerHospital } = useAuth();
+  const { registerPatient, registerHospital, registerInsurance } = useAuth();
   const [role, setRole] = useState(
-    searchParams.get("role") === "hospital" ? "hospital" : "patient"
+    searchParams.get("role") === "insurance"
+      ? "insurance"
+      : searchParams.get("role") === "hospital"
+      ? "hospital"
+      : "patient"
   );
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
-    // Patient (Backend/src/models/User.js)
+    // Patient
     firstName: "",
     lastName: "",
-    // Hospital (Backend/src/models/Hospital.js)
+    // Hospital
     hospitalName: "",
-    registrationNumber: "",
+    hospitalRegistrationNumber: "",
     hospitalType: "",
+    // Insurance
+    companyName: "",
+    insuranceRegistrationNumber: "",
+    website: "",
+    // Shared Address
     street: "",
     city: "",
     state: "",
     pincode: "",
-    // Shared
+    // Shared Contact & Auth
     email: "",
     mobileNumber: "",
     password: "",
@@ -60,10 +69,10 @@ export default function Signup() {
           mobileNumber: form.mobileNumber,
           password: form.password,
         });
-      } else {
+      } else if (role === "hospital") {
         await registerHospital({
           name: form.hospitalName,
-          registrationNumber: form.registrationNumber,
+          registrationNumber: form.hospitalRegistrationNumber,
           hospitalType: form.hospitalType,
           street: form.street,
           city: form.city,
@@ -73,9 +82,20 @@ export default function Signup() {
           mobileNumber: form.mobileNumber,
           password: form.password,
         });
+      } else if (role === "insurance") {
+        await registerInsurance({
+          companyName: form.companyName,
+          registrationNumber: form.insuranceRegistrationNumber,
+          street: form.street,
+          city: form.city,
+          state: form.state,
+          pincode: form.pincode,
+          website: form.website,
+          email: form.email,
+          mobileNumber: form.mobileNumber,
+          password: form.password,
+        });
       }
-      // Account created — send the user to log in explicitly rather than
-      // signing them in automatically. Login.jsx shows the success popup.
       navigate(`/login?role=${role}&signupSuccess=1`, { replace: true });
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
@@ -98,7 +118,7 @@ export default function Signup() {
           </div>
         )}
 
-        {role === "patient" ? (
+        {role === "patient" && (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -129,7 +149,9 @@ export default function Signup() {
               />
             </div>
           </div>
-        ) : (
+        )}
+
+        {role === "hospital" && (
           <>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -152,9 +174,9 @@ export default function Signup() {
                   Registration number
                 </label>
                 <input
-                  name="registrationNumber"
+                  name="hospitalRegistrationNumber"
                   required
-                  value={form.registrationNumber}
+                  value={form.hospitalRegistrationNumber}
                   onChange={handleChange}
                   placeholder="e.g. MH/2024/12345"
                   className={inputCls}
@@ -244,6 +266,112 @@ export default function Signup() {
           </>
         )}
 
+        {role === "insurance" && (
+          <>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Insurance Company name
+              </label>
+              <input
+                name="companyName"
+                required
+                minLength={3}
+                value={form.companyName}
+                onChange={handleChange}
+                placeholder="Star Health & Allied Insurance"
+                className={inputCls}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                IRDAI Registration number
+              </label>
+              <input
+                name="insuranceRegistrationNumber"
+                required
+                value={form.insuranceRegistrationNumber}
+                onChange={handleChange}
+                placeholder="e.g. IRDAI-HLT-2026-001"
+                className={inputCls}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Headquarters Street address
+              </label>
+              <input
+                name="street"
+                required
+                value={form.street}
+                onChange={handleChange}
+                placeholder="15 Star Towers, MG Road"
+                className={inputCls}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  City
+                </label>
+                <input
+                  name="city"
+                  required
+                  value={form.city}
+                  onChange={handleChange}
+                  placeholder="Bengaluru"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  State
+                </label>
+                <input
+                  name="state"
+                  required
+                  value={form.state}
+                  onChange={handleChange}
+                  placeholder="Karnataka"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Pincode
+                </label>
+                <input
+                  name="pincode"
+                  required
+                  pattern="\d{6}"
+                  title="6-digit pincode"
+                  value={form.pincode}
+                  onChange={handleChange}
+                  placeholder="560001"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Official Website (Optional)
+                </label>
+                <input
+                  name="website"
+                  value={form.website}
+                  onChange={handleChange}
+                  placeholder="https://www.starhealth.in"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
             Email
@@ -314,7 +442,13 @@ export default function Signup() {
         >
           {submitting
             ? "Creating account..."
-            : `Create ${role === "hospital" ? "Hospital" : "Patient"} account`}
+            : `Create ${
+                role === "hospital"
+                  ? "Hospital"
+                  : role === "insurance"
+                  ? "Insurance Company"
+                  : "Patient"
+              } account`}
         </button>
       </form>
 
