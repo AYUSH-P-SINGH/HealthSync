@@ -15,6 +15,7 @@ const {
 const {
   registerValidator,
   registerHospitalValidator,
+  registerInsuranceValidator,
   loginValidator,
   verifyEmailValidator,
   resendVerificationValidator,
@@ -43,6 +44,15 @@ router.post(
   registerHospitalValidator,
   validate,
   authController.registerHospital
+);
+
+// Register a new insurance company
+router.post(
+  '/register/insurance',
+  registerLimiter,
+  registerInsuranceValidator,
+  validate,
+  authController.registerInsurance
 );
 
 // Login

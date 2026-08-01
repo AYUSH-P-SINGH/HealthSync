@@ -21,6 +21,10 @@ class ApiResponse {
     return new ApiResponse(200, data, message);
   }
 
+  static success(data, message = 'Success') {
+    return new ApiResponse(200, data, message);
+  }
+
   static created(data, message = 'Resource created successfully') {
     return new ApiResponse(201, data, message);
   }

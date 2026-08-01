@@ -70,4 +70,24 @@ router.patch(
   patientController.revokeHospitalLink
 );
 
+// ─── Insurance linking (consent) ───────────────────────
+
+// List my insurance requests (pending, approved, rejected, revoked)
+router.get('/insurance-requests', patientController.listInsuranceRequests);
+
+// Approve / reject an incoming insurance access request
+router.patch('/insurance-requests/:linkId/respond', patientController.respondToInsuranceRequest);
+
+// Revoke active consent for an insurance organization
+router.patch('/insurance-requests/:linkId/revoke', patientController.revokeInsuranceConsent);
+
+// ─── Insurance Policies & Claims ───────────────────────
+
+// List patient's issued insurance policies & disclosure records
+router.get('/policies', patientController.listPatientPolicies);
+
+// Submit and track insurance claims
+router.post('/claims', patientController.submitPatientClaim);
+router.get('/claims', patientController.listPatientClaims);
+
 module.exports = router;
