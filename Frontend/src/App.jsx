@@ -5,21 +5,11 @@ import Signup from "./pages/Signup.jsx";
 import VerifyEmail from "./pages/VerifyEmail.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
 import HospitalDashboard from "./pages/HospitalDashboard.jsx";
+import InsuranceDashboard from "./pages/InsuranceDashboard.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
-/*
-  Flow (best practice):
-  Landing (/) -> Login (/login, role toggle: Patient | Hospital)
-              -> Signup (/signup, same toggle)
-  Login <-> Signup link to each other.
-  On success -> /dashboard/patient or /dashboard/hospital (JWT-protected)
-
-  Admin is a separate, unadvertised flow (/admin/login) — no signup page,
-  no role toggle. Admin accounts are provisioned via Backend/scripts/seedAdmin.js,
-  not through the public API.
-*/
 export default function App() {
   return (
     <Routes>
@@ -41,6 +31,14 @@ export default function App() {
         element={
           <ProtectedRoute role="hospital">
             <HospitalDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/insurance"
+        element={
+          <ProtectedRoute role="insurance">
+            <InsuranceDashboard />
           </ProtectedRoute>
         }
       />
