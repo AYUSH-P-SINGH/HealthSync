@@ -162,6 +162,10 @@ router.patch(
   recordController.setPrescriptionStatus
 );
 
+// Dedicated medication cabinet & active interaction warnings
+router.get('/medications', recordController.getMedicationCabinet);
+
+
 // ─── Consent grants (time-bound OTP/QR access) ─────────
 
 // Issue a scoped, time-bound access code
