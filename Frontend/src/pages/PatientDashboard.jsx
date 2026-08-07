@@ -43,7 +43,9 @@ import RecordsView from "../components/RecordsView.jsx";
 import FollowUpsView from "../components/FollowUpsView.jsx";
 import ConsentsView from "../components/ConsentsView.jsx";
 import HealthView from "../components/HealthView.jsx";
+import MedicationCabinetView from "../components/MedicationCabinetView.jsx";
 import AdvisoryBanner from "../components/AdvisoryBanner.jsx";
+
 import ClaimDetailDrawer from "../components/ClaimDetailDrawer.jsx";
 import { onSocketEvent } from "../lib/socket.js";
 
@@ -66,16 +68,14 @@ const SIDEBAR_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { key: "insurance", label: "Insurance & Consent", icon: ShieldCheck },
   { key: "appointments", label: "Appointments", icon: CalendarDays },
-
   { key: "timeline", label: "Health Timeline", icon: History },
-
+  { key: "medications", label: "Medication Cabinet", icon: Pill },
   { key: "records", label: "Records", icon: FileText },
   // Sits directly under Records: a follow-up is the thing a record promised
   // for later, so the two belong next to each other in the mental model.
   { key: "followups", label: "Follow-ups", icon: CalendarClock },
   { key: "consents", label: "Consent & Sharing", icon: QrCode },
   { key: "health", label: "Health Advisories", icon: ShieldPlus },
-  { key: "appointments", label: "Appointments", icon: CalendarDays },
   { key: "messages", label: "Messages", icon: MessageSquare },
 ];
 
@@ -517,9 +517,9 @@ export default function PatientDashboard() {
                   goTo("records");
                 },
                 prescriptions: () => {
-                  setRecordsTab("prescriptions");
-                  goTo("records");
+                  goTo("medications");
                 },
+
               }}
             />
 
@@ -530,7 +530,12 @@ export default function PatientDashboard() {
             <SimpleView title="Health Timeline">
               <TimelineView accessToken={accessToken} />
             </SimpleView>
+          ) : activeSidebarItem === "medications" ? (
+            <SimpleView title="Medication Cabinet">
+              <MedicationCabinetView accessToken={accessToken} />
+            </SimpleView>
           ) : activeSidebarItem === "records" ? (
+
             <SimpleView title="Health Records">
               <RecordsView
                 key={recordsTab}

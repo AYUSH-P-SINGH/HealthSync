@@ -365,6 +365,51 @@ const countsForPatient = async (patientId) => {
   };
 };
 
+/**
+ * Medication Cabinet service — aggregates active and past prescriptions,
+ * active drug-drug interaction warnings, and dosage summaries.
+ */
+const getMedicationCabinet = async (patientId) => {
+  const prescriptions = await MedicalRecord.find({
+    patient: patientId,
+    type: 'prescription',
+  })
+    .populate('hospital', 'name hospitalType city')
+    .sort({ recordDate: -1, createdAt: -1 });
+
+  const activeMedications = [];
+  const pastMedications = [];
+  const allActiveMedicines = [];
+
+  for (const record of prescriptions) {
+    const json = record.toJSON();
+    if (json.isActivePrescription !== false) {
+      activeMedications.push(json);
+      if (Array.isArray(json.medicines)) {
+        json.medicines.forEach((m) => {
+          if (m && m.name) allActiveMedicines.push(m);
+        });
+      }
+    } else {
+      pastMedications.push(json);
+    }
+  }
+
+  // Cross-reference active medicines for drug-drug interactions & allergies
+  let activeAlerts = [];
+  if (allActiveMedicines.length > 0) {
+    activeAlerts = await interactionService.checkPrescription(patientId, allActiveMedicines);
+  }
+
+  return {
+    activeMedications,
+    pastMedications,
+    activeAlerts,
+    totalActive: activeMedications.length,
+    totalPast: pastMedications.length,
+  };
+};
+
 module.exports = {
   createRecord,
   listPatientRecords,
@@ -372,7 +417,9 @@ module.exports = {
   updatePatientRecord,
   deletePatientRecord,
   setPrescriptionStatus,
+  getMedicationCabinet,
   createRecordForLink,
   listRecordsForLink,
   countsForPatient,
 };
+

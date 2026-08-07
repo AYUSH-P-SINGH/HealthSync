@@ -85,6 +85,14 @@ const setPrescriptionStatus = asyncHandler(async (req, res) => {
   res.status(response.statusCode).json(response);
 });
 
+/** GET /api/patients/medications — dedicated medication cabinet */
+const getMedicationCabinet = asyncHandler(async (req, res) => {
+  const result = await recordService.getMedicationCabinet(req.user.id);
+  const response = ApiResponse.ok(result);
+  res.status(response.statusCode).json(response);
+});
+
+
 // ─── Hospital side ─────────────────────────────────────
 
 /** POST /api/hospitals/patients/:linkId/records */
@@ -118,6 +126,7 @@ module.exports = {
   updateMyRecord,
   deleteMyRecord,
   setPrescriptionStatus,
+  getMedicationCabinet,
   createRecordForPatient,
   listRecordsForPatient,
 };

@@ -145,6 +145,8 @@ export const patientApi = {
       body: { active },
       token,
     }),
+  getMedicationCabinet: (token) => request("/patients/medications", { token }),
+
 
   // ─── Consent grants (time-bound OTP/QR access) ───
   issueConsent: (payload, token) =>
