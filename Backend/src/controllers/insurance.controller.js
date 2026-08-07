@@ -114,6 +114,60 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
   res.status(200).json(ApiResponse.success(result, 'Claim status updated successfully.'));
 });
 
+// ─── Claim Interaction (messaging, documents, appeals) ──
+
+const claimInteractionService = require('../services/claimInteraction.service');
+
+/**
+ * GET /api/insurance/claims/:claimId
+ * Fetch a single claim — used by the frontend to re-pull fresh state
+ * after a real-time `claim:updated` socket event.
+ */
+const getClaimById = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.getClaimById('insurance', req.user.id, req.params.claimId);
+  res.status(200).json(ApiResponse.success(result, 'Claim retrieved successfully.'));
+});
+
+/**
+ * GET /api/insurance/claims/unread
+ */
+const getClaimUnreadCounts = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.getUnreadCounts('insurance', req.user.id);
+  res.status(200).json(ApiResponse.success(result, 'Unread message counts retrieved.'));
+});
+
+/**
+ * GET /api/insurance/claims/:claimId/messages
+ */
+const getClaimMessages = asyncHandler(async (req, res) => {
+  const { messages } = await claimInteractionService.getMessages('insurance', req.user.id, req.params.claimId);
+  res.status(200).json(ApiResponse.success(messages, 'Claim messages retrieved.'));
+});
+
+/**
+ * POST /api/insurance/claims/:claimId/messages
+ */
+const sendClaimMessage = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.sendMessage('insurance', req.user.id, req.params.claimId, req.body);
+  res.status(201).json(ApiResponse.created(result, 'Message sent to patient.'));
+});
+
+/**
+ * POST /api/insurance/claims/:claimId/document-requests
+ */
+const requestClaimDocuments = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.requestDocuments(req.user.id, req.params.claimId, req.body.items);
+  res.status(200).json(ApiResponse.success(result, 'Document request sent to patient.'));
+});
+
+/**
+ * PATCH /api/insurance/claims/:claimId/appeal
+ */
+const resolveClaimAppeal = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.resolveAppeal(req.user.id, req.params.claimId, req.body);
+  res.status(200).json(ApiResponse.success(result, 'Appeal updated successfully.'));
+});
+
 module.exports = {
   getProfile,
   getDashboardSummary,
@@ -125,4 +179,10 @@ module.exports = {
   listPolicies,
   listClaims,
   updateClaimStatus,
+  getClaimById,
+  getClaimUnreadCounts,
+  getClaimMessages,
+  sendClaimMessage,
+  requestClaimDocuments,
+  resolveClaimAppeal,
 };

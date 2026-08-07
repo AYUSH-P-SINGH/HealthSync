@@ -47,7 +47,7 @@ const claimSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['submitted', 'in_review', 'approved', 'rejected', 'more_documents_required'],
+      enum: ['submitted', 'in_review', 'approved', 'rejected', 'more_documents_required', 'appealed'],
       default: 'submitted',
       index: true,
     },
@@ -70,6 +70,40 @@ const claimSchema = new mongoose.Schema(
         timestamp: { type: Date, default: Date.now },
       },
     ],
+    // Structured document requests raised by the insurer. Replaces the
+    // free-text dead-end of 'more_documents_required' — the patient sees
+    // exactly which items are outstanding and uploads against each one.
+    documentRequests: [
+      {
+        itemName: { type: String, required: true, trim: true },
+        note: { type: String, default: '', trim: true },
+        status: {
+          type: String,
+          enum: ['pending', 'fulfilled'],
+          default: 'pending',
+        },
+        requestedAt: { type: Date, default: Date.now },
+        fulfilledAt: { type: Date, default: null },
+        document: {
+          name: { type: String, default: null },
+          fileUrl: { type: String, default: null },
+        },
+      },
+    ],
+    // Formal appeal filed by the patient against a rejection or
+    // partial approval — real-world recourse, not just chat.
+    appeal: {
+      filed: { type: Boolean, default: false },
+      reason: { type: String, default: null, trim: true },
+      status: {
+        type: String,
+        enum: ['none', 'filed', 'under_review', 'upheld', 'overturned'],
+        default: 'none',
+      },
+      filedAt: { type: Date, default: null },
+      resolvedAt: { type: Date, default: null },
+      resolutionNote: { type: String, default: null, trim: true },
+    },
   },
   { timestamps: true }
 );

@@ -149,6 +149,65 @@ const listPatientClaims = asyncHandler(async (req, res) => {
   res.status(200).json(ApiResponse.success(result, 'Patient claims retrieved successfully.'));
 });
 
+// ─── Claim Interaction (messaging, documents, appeals) ──
+
+const claimInteractionService = require('../services/claimInteraction.service');
+
+/**
+ * GET /api/patients/claims/:claimId
+ * Fetch a single claim — used by the frontend to re-pull fresh state
+ * after a real-time `claim:updated` socket event.
+ */
+const getClaimById = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.getClaimById('patient', req.user.id, req.params.claimId);
+  res.status(200).json(ApiResponse.success(result, 'Claim retrieved successfully.'));
+});
+
+/**
+ * GET /api/patients/claims/unread
+ */
+const getClaimUnreadCounts = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.getUnreadCounts('patient', req.user.id);
+  res.status(200).json(ApiResponse.success(result, 'Unread message counts retrieved.'));
+});
+
+/**
+ * GET /api/patients/claims/:claimId/messages
+ */
+const getClaimMessages = asyncHandler(async (req, res) => {
+  const { messages } = await claimInteractionService.getMessages('patient', req.user.id, req.params.claimId);
+  res.status(200).json(ApiResponse.success(messages, 'Claim messages retrieved.'));
+});
+
+/**
+ * POST /api/patients/claims/:claimId/messages
+ */
+const sendClaimMessage = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.sendMessage('patient', req.user.id, req.params.claimId, req.body);
+  res.status(201).json(ApiResponse.created(result, 'Message sent to insurer.'));
+});
+
+/**
+ * POST /api/patients/claims/:claimId/documents/:requestId
+ */
+const fulfillClaimDocument = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.fulfillDocumentRequest(
+    req.user.id,
+    req.params.claimId,
+    req.params.requestId,
+    req.body
+  );
+  res.status(200).json(ApiResponse.success(result, 'Document uploaded against insurer request.'));
+});
+
+/**
+ * POST /api/patients/claims/:claimId/appeal
+ */
+const appealClaim = asyncHandler(async (req, res) => {
+  const result = await claimInteractionService.fileAppeal(req.user.id, req.params.claimId, req.body.reason);
+  res.status(200).json(ApiResponse.success(result, 'Appeal filed successfully.'));
+});
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -164,4 +223,10 @@ module.exports = {
   listPatientPolicies,
   submitPatientClaim,
   listPatientClaims,
+  getClaimById,
+  getClaimUnreadCounts,
+  getClaimMessages,
+  sendClaimMessage,
+  fulfillClaimDocument,
+  appealClaim,
 };

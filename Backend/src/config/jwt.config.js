@@ -38,5 +38,12 @@ module.exports = {
       windowMs: 60 * 60 * 1000,   // 1 hour
       max: 5,
     },
+    // Report scanning parses uploaded PDFs and runs the extractor, so it is
+    // both CPU-bound and the only endpoint that accepts large binaries.
+    // Tighter than `general` to keep it from becoming a cheap DoS lever.
+    reportScan: {
+      windowMs: 15 * 60 * 1000,   // 15 minutes
+      max: 20,
+    },
   },
 };

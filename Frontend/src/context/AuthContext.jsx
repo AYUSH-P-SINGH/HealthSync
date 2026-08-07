@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { authApi } from "../lib/api.js";
+import { connectSocket, disconnectSocket } from "../lib/socket.js";
 
 const AuthContext = createContext(null);
 
@@ -46,6 +47,22 @@ export function AuthProvider({ children }) {
       localStorage.removeItem(STORAGE_KEY);
     }
   }, [accessToken, user, role]);
+
+  // Keep the realtime socket connection in lockstep with the session:
+  // (re)connect whenever we have a fresh access token, drop it on logout.
+  // Access tokens are short-lived (15 min) and rotate via silent refresh —
+  // this effect reconnects with the new token whenever `accessToken` changes.
+  useEffect(() => {
+    if (accessToken) {
+      connectSocket(accessToken);
+    } else {
+      disconnectSocket();
+    }
+    return () => {
+      // Only tear down on unmount, not on every token refresh — leaving
+      // this empty avoids a disconnect/reconnect flicker between renders.
+    };
+  }, [accessToken]);
 
   // On first load: validate any stored access token, and if that fails
   // (expired — access tokens only last 15 minutes), try a silent refresh

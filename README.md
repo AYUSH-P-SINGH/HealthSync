@@ -160,6 +160,7 @@ npm run dev
 ## 🗺️ Roadmap
 
 * [x] Authentication & Security Foundation
+* [x] **Follow-up Loop Closure** — tracks recommendations reports make about the future
 * [ ] Patient Profile Management
 * [ ] Medical Record Upload
 * [ ] OCR & Document Digitization

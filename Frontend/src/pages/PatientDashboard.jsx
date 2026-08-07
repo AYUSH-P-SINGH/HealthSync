@@ -31,6 +31,7 @@ import {
   History,
   QrCode,
   ShieldPlus,
+  CalendarClock,
 
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -39,9 +40,12 @@ import { initialsOf, formatDate, titleCase } from "../lib/format.js";
 import TopbarActions from "../components/TopbarActions.jsx";
 import TimelineView from "../components/TimelineView.jsx";
 import RecordsView from "../components/RecordsView.jsx";
+import FollowUpsView from "../components/FollowUpsView.jsx";
 import ConsentsView from "../components/ConsentsView.jsx";
 import HealthView from "../components/HealthView.jsx";
 import AdvisoryBanner from "../components/AdvisoryBanner.jsx";
+import ClaimDetailDrawer from "../components/ClaimDetailDrawer.jsx";
+import { onSocketEvent } from "../lib/socket.js";
 
 /*
   Patient-facing dashboard, wired to the real backend:
@@ -66,6 +70,9 @@ const SIDEBAR_ITEMS = [
   { key: "timeline", label: "Health Timeline", icon: History },
 
   { key: "records", label: "Records", icon: FileText },
+  // Sits directly under Records: a follow-up is the thing a record promised
+  // for later, so the two belong next to each other in the mental model.
+  { key: "followups", label: "Follow-ups", icon: CalendarClock },
   { key: "consents", label: "Consent & Sharing", icon: QrCode },
   { key: "health", label: "Health Advisories", icon: ShieldPlus },
   { key: "appointments", label: "Appointments", icon: CalendarDays },
@@ -240,15 +247,25 @@ export default function PatientDashboard() {
     if (item !== activeSidebarItem) setSearchParams({ tab: item });
   };
 
-  /* Notifications, built from real hospital-link activity. */
+  /* Notifications, built from real hospital-link, insurance-consent
+     and claim activity. Each source fails independently so one broken
+     endpoint never blanks the whole bell. */
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(true);
 
   const loadNotifications = useCallback(async () => {
     try {
-      const res = await patientApi.listHospitalLinks(accessToken);
+      const [linksRes, insReqRes, claimsRes, unreadRes] = await Promise.all([
+        patientApi.listHospitalLinks(accessToken).catch(() => null),
+        patientApi.listInsuranceRequests(accessToken).catch(() => null),
+        patientApi.listClaims(accessToken).catch(() => null),
+        patientApi.getClaimUnreadCounts(accessToken).catch(() => null),
+      ]);
+
       const items = [];
-      for (const link of res.data.links || []) {
+
+      // ── Hospital link activity ──
+      for (const link of linksRes?.data?.links || []) {
         const name = link.hospital?.name || "A hospital";
         if (link.status === "pending") {
           items.push({
@@ -269,8 +286,79 @@ export default function PatientDashboard() {
           });
         }
       }
+
+      // ── Insurance access requests ──
+      for (const req of insReqRes?.data || []) {
+        const name = req.insurance?.companyName || "An insurance company";
+        if (req.status === "pending") {
+          items.push({
+            id: `${req._id}:ins-pending`,
+            unread: true,
+            title: `${name} requests access to your records`,
+            body: `Purpose: ${req.purpose || "not specified"}. Review and approve or reject from the Insurance tab.`,
+            time: req.requestedAt || req.createdAt,
+            tab: "insurance",
+          });
+        } else if (req.status === "approved" && req.respondedAt) {
+          items.push({
+            id: `${req._id}:ins-approved`,
+            title: `Access granted to ${name}`,
+            body: "They can now view the record categories you approved.",
+            time: req.respondedAt,
+            tab: "insurance",
+          });
+        }
+      }
+
+      // ── Claim activity (insurer updates + unread messages) ──
+      const unreadCounts = unreadRes?.data || {};
+      for (const claim of claimsRes?.data || []) {
+        const insurerName = claim.insurance?.companyName || "Your insurer";
+
+        const unread = unreadCounts[claim._id];
+        if (unread > 0) {
+          items.push({
+            id: `${claim._id}:msg`,
+            unread: true,
+            title: `${unread} new message${unread > 1 ? "s" : ""} on claim ${claim.claimNumber}`,
+            body: `${insurerName} sent you a message. Open the claim to reply.`,
+            time: claim.updatedAt,
+            tab: "insurance",
+          });
+        }
+
+        const pendingDocs = (claim.documentRequests || []).filter((r) => r.status === "pending");
+        if (pendingDocs.length > 0) {
+          items.push({
+            id: `${claim._id}:docs`,
+            unread: true,
+            title: `Documents needed for claim ${claim.claimNumber}`,
+            body: `${insurerName} requested: ${pendingDocs.map((r) => r.itemName).join(", ")}.`,
+            time: pendingDocs[pendingDocs.length - 1].requestedAt,
+            tab: "insurance",
+          });
+        }
+
+        // Latest insurer decision on the claim
+        const lastInsurerUpdate = [...(claim.statusHistory || [])]
+          .reverse()
+          .find((h) => h.updatedBy !== "Patient");
+        if (lastInsurerUpdate && ["approved", "rejected"].includes(lastInsurerUpdate.status)) {
+          items.push({
+            id: `${claim._id}:${lastInsurerUpdate.status}`,
+            title: `Claim ${claim.claimNumber} ${lastInsurerUpdate.status}`,
+            body:
+              lastInsurerUpdate.status === "approved"
+                ? `Approved for ₹${(claim.approvedAmount || 0).toLocaleString("en-IN")}.`
+                : claim.rejectionReason || lastInsurerUpdate.comment || "See the claim for details.",
+            time: lastInsurerUpdate.timestamp,
+            tab: "insurance",
+          });
+        }
+      }
+
       items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
-      setNotifications(items.slice(0, 12));
+      setNotifications(items.slice(0, 15));
     } catch {
       /* notifications are non-critical — fail quietly */
     } finally {
@@ -281,6 +369,24 @@ export default function PatientDashboard() {
   useEffect(() => {
     if (accessToken) loadNotifications();
   }, [accessToken, loadNotifications]);
+
+  // Live updates: any event that could change what the bell should show
+  // (a hospital/insurer request, a claim decision, a new message) triggers
+  // an immediate refetch — no page reload, no polling delay.
+  useEffect(() => {
+    const events = [
+      "link:request",
+      "link:updated",
+      "consent:request",
+      "consent:updated",
+      "policy:new",
+      "claim:new",
+      "claim:updated",
+      "claim:message",
+    ];
+    const unsubscribers = events.map((event) => onSocketEvent(event, loadNotifications));
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, [loadNotifications]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white">
@@ -396,7 +502,12 @@ export default function PatientDashboard() {
               fileInputRef={fileInputRef}
               onPhotoChange={handlePhotoChange}
               onProfileSaved={handleProfileSaved}
-              onSummaryChanged={() => refresh().catch(() => {})}
+              onSummaryChanged={() => {
+                refresh().catch(() => {});
+                // Acting on a request (approve/decline) must also clear
+                // its unread notification right away.
+                loadNotifications();
+              }}
               onOpenHealthTab={() => goTo("health")}
               onStatClick={{
                 completeness: () => setPanelOpen(true),
@@ -413,7 +524,7 @@ export default function PatientDashboard() {
             />
 
           ) : activeSidebarItem === "insurance" ? (
-            <InsurancePatientView profile={profile} accessToken={accessToken} />
+            <InsurancePatientView profile={profile} accessToken={accessToken} onActivity={loadNotifications} />
 
           ) : activeSidebarItem === "timeline" ? (
             <SimpleView title="Health Timeline">
@@ -425,6 +536,14 @@ export default function PatientDashboard() {
                 key={recordsTab}
                 accessToken={accessToken}
                 initialTab={recordsTab}
+                onCountsChanged={() => refresh().catch(() => {})}
+                onFollowUpsFound={() => goTo("followups")}
+              />
+            </SimpleView>
+          ) : activeSidebarItem === "followups" ? (
+            <SimpleView title="Follow-ups">
+              <FollowUpsView
+                accessToken={accessToken}
                 onCountsChanged={() => refresh().catch(() => {})}
               />
             </SimpleView>
@@ -1361,7 +1480,7 @@ function StatCard({ icon: Icon, label, value, footer, onClick }) {
   );
 }
 
-function InsurancePatientView({ profile, accessToken }) {
+function InsurancePatientView({ profile, accessToken, onActivity }) {
   const [subTab, setSubTab] = useState("requests");
   const [copied, setCopied] = useState(false);
   const [requests, setRequests] = useState([]);
@@ -1383,6 +1502,10 @@ function InsurancePatientView({ profile, accessToken }) {
   });
   const [submittingClaim, setSubmittingClaim] = useState(false);
 
+  // Claim interaction drawer + unread message badges
+  const [openClaim, setOpenClaim] = useState(null);
+  const [unreadCounts, setUnreadCounts] = useState({});
+
   const healthSyncId = profile?.healthSyncId || profile?.patientId || "HS-PENDING";
 
   const handleCopyId = () => {
@@ -1395,14 +1518,16 @@ function InsurancePatientView({ profile, accessToken }) {
     setLoading(true);
     setError("");
     try {
-      const [reqRes, polRes, clmRes] = await Promise.all([
+      const [reqRes, polRes, clmRes, unreadRes] = await Promise.all([
         patientApi.listInsuranceRequests(accessToken),
         patientApi.listPolicies(accessToken),
         patientApi.listClaims(accessToken),
+        patientApi.getClaimUnreadCounts(accessToken).catch(() => ({ data: {} })),
       ]);
       setRequests(reqRes.data || []);
       setPolicies(polRes.data || []);
       setClaims(clmRes.data || []);
+      setUnreadCounts(unreadRes.data || {});
     } catch (err) {
       setError(err.message || "Failed to load insurance data.");
     } finally {
@@ -1414,6 +1539,14 @@ function InsurancePatientView({ profile, accessToken }) {
     loadData();
   }, [loadData]);
 
+  // Live updates: refetch this view the instant an insurer sends a new
+  // request, issues a policy, or touches a claim — no manual refresh.
+  useEffect(() => {
+    const events = ["consent:request", "consent:updated", "policy:new", "claim:new", "claim:updated", "claim:message"];
+    const unsubscribers = events.map((event) => onSocketEvent(event, loadData));
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, [loadData]);
+
   const handleRespond = async (linkId, action) => {
     setError("");
     setMessage("");
@@ -1422,6 +1555,7 @@ function InsurancePatientView({ profile, accessToken }) {
       await patientApi.respondToInsuranceRequest(linkId, { action, permissions }, accessToken);
       setMessage(`Insurance access request ${action}d successfully.`);
       loadData();
+      onActivity?.();
     } catch (err) {
       setError(err.message || "Failed to respond to request.");
     }
@@ -1434,6 +1568,7 @@ function InsurancePatientView({ profile, accessToken }) {
       await patientApi.revokeInsuranceConsent(linkId, accessToken);
       setMessage("Insurance access consent revoked.");
       loadData();
+      onActivity?.();
     } catch (err) {
       setError(err.message || "Failed to revoke access.");
     }
@@ -1460,6 +1595,7 @@ function InsurancePatientView({ profile, accessToken }) {
       );
       setMessage("Insurance claim submitted successfully!");
       setClaimForm({ policyId: "", hospitalName: "", diagnosis: "", claimAmount: "" });
+      onActivity?.();
       loadData();
     } catch (err) {
       setError(err.message || "Failed to submit claim.");
@@ -1786,11 +1922,24 @@ function InsurancePatientView({ profile, accessToken }) {
                       </div>
                       <p className="text-slate-700 font-semibold mt-1">{c.hospitalName} &bull; {c.diagnosis}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-slate-900 font-bold text-sm">₹{c.claimAmount?.toLocaleString("en-IN")}</p>
-                      {c.approvedAmount > 0 && (
-                        <p className="text-emerald-700 font-semibold text-[11px]">Approved: ₹{c.approvedAmount.toLocaleString("en-IN")}</p>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-slate-900 font-bold text-sm">₹{c.claimAmount?.toLocaleString("en-IN")}</p>
+                        {c.approvedAmount > 0 && (
+                          <p className="text-emerald-700 font-semibold text-[11px]">Approved: ₹{c.approvedAmount.toLocaleString("en-IN")}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setOpenClaim(c)}
+                        className="relative rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700"
+                      >
+                        Open
+                        {unreadCounts[c._id] > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                            {unreadCounts[c._id]}
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1798,6 +1947,26 @@ function InsurancePatientView({ profile, accessToken }) {
             )}
           </div>
         </div>
+      )}
+
+      {/* Claim workspace drawer: timeline, messaging, documents, appeal */}
+      {openClaim && (
+        <ClaimDetailDrawer
+          claim={openClaim}
+          role="patient"
+          token={accessToken}
+          onClose={() => {
+            setOpenClaim(null);
+            loadData();
+            // Opening the thread marks messages read and documents may
+            // have been provided — recompute the bell badge.
+            onActivity?.();
+          }}
+          onClaimUpdated={(updated) => {
+            setOpenClaim(updated);
+            setClaims((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
+          }}
+        />
       )}
     </div>
   );

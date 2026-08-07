@@ -36,6 +36,7 @@ import { initialsOf, formatDate, titleCase } from "../lib/format.js";
 import TopbarActions from "../components/TopbarActions.jsx";
 import ConsentAccessView from "../components/ConsentAccessView.jsx";
 import PatientRecordsPanel from "../components/PatientRecordsPanel.jsx";
+import { onSocketEvent } from "../lib/socket.js";
 
 /*
   Hospital staff dashboard, wired to the real backend:
@@ -239,6 +240,16 @@ export default function HospitalDashboard() {
   useEffect(() => {
     if (accessToken) loadNotifications();
   }, [accessToken, loadNotifications]);
+
+  // Live updates: the instant a patient approves, declines, or revokes a
+  // link request, refresh both the bell and the dashboard summary counts.
+  useEffect(() => {
+    const onLinkUpdated = () => {
+      loadNotifications();
+      refresh().catch(() => {});
+    };
+    return onSocketEvent("link:updated", onLinkUpdated);
+  }, [loadNotifications, refresh]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white">
@@ -962,6 +973,10 @@ function PatientsView({ accessToken, search, setSearch, onChanged }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live updates: a patient's decision on a link request lands here
+  // immediately, without waiting on the next tab switch or reload.
+  useEffect(() => onSocketEvent("link:updated", load), [load]);
 
   const total = counts.pending + counts.active + counts.rejected + counts.discharged;
   const tabs = [

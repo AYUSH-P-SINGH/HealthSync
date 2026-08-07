@@ -39,4 +39,28 @@ router.get('/policies', insuranceController.listPolicies);
 router.get('/claims', insuranceController.listClaims);
 router.patch('/claims/:claimId/status', updateClaimValidator, validate, insuranceController.updateClaimStatus);
 
+// ─── Claim Interaction: insurer ↔ patient ──────────────
+const {
+  sendMessageValidator,
+  getMessagesValidator,
+  requestDocumentsValidator,
+  resolveAppealValidator,
+} = require('../validators/claimInteraction.validator');
+
+// Unread message counts across all claims (for badges)
+router.get('/claims/unread', insuranceController.getClaimUnreadCounts);
+
+// Fetch a single claim (used to refresh after a live socket event)
+router.get('/claims/:claimId', getMessagesValidator, validate, insuranceController.getClaimById);
+
+// Secure messaging thread with the patient, scoped to a claim
+router.get('/claims/:claimId/messages', getMessagesValidator, validate, insuranceController.getClaimMessages);
+router.post('/claims/:claimId/messages', sendMessageValidator, validate, insuranceController.sendClaimMessage);
+
+// Raise structured document requests on a claim
+router.post('/claims/:claimId/document-requests', requestDocumentsValidator, validate, insuranceController.requestClaimDocuments);
+
+// Progress / resolve a patient appeal
+router.patch('/claims/:claimId/appeal', resolveAppealValidator, validate, insuranceController.resolveClaimAppeal);
+
 module.exports = router;

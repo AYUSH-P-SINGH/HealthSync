@@ -9,9 +9,12 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [role, setRole] = useState(
-    searchParams.get("role") === "hospital" ? "hospital" : "patient"
-  );
+  // Honor all three roles from the URL — previously "?role=insurance"
+  // silently fell back to the Patient tab.
+  const [role, setRole] = useState(() => {
+    const r = searchParams.get("role");
+    return r === "hospital" || r === "insurance" ? r : "patient";
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

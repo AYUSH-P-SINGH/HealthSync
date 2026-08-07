@@ -14,6 +14,7 @@ const MedicalRecord = require('../models/MedicalRecord');
 const HospitalPatient = require('../models/HospitalPatient');
 const Hospital = require('../models/Hospital');
 const interactionService = require('./interaction.service');
+const followupService = require('./followup.service');
 const auditService = require('./audit.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -91,13 +92,41 @@ const createRecord = async ({ patientId, hospitalId, createdByRole, body, ip, us
 
   if (record.hospital) await record.populate('hospital', 'name hospitalType city');
 
+  /**
+   * Close the clinical loop.
+   *
+   * Two things happen here: any follow-up recommendation buried in this
+   * record's text becomes a tracked obligation, and any EXISTING obligation
+   * this record satisfies gets auto-closed.
+   *
+   * Deliberately awaited (so the caller can report what was found) but the
+   * service swallows its own errors — a follow-up failure must never stop a
+   * clinician from filing a record.
+   */
+  const followUp = await followupService.onRecordCreated({
+    record,
+    actorId,
+    actorRole: createdByRole,
+    ip,
+    userAgent,
+  });
+
+  const notes = [];
+  if (alerts.length > 0) {
+    notes.push(`${alerts.length} safety alert${alerts.length > 1 ? 's' : ''} found. Please review.`);
+  }
+  if (followUp.extracted > 0) {
+    notes.push(`${followUp.extracted} follow-up${followUp.extracted > 1 ? 's' : ''} detected and now tracked.`);
+  }
+  if (followUp.autoClosed > 0) {
+    notes.push(`${followUp.autoClosed} pending follow-up${followUp.autoClosed > 1 ? 's' : ''} closed by this record.`);
+  }
+
   return {
     record: record.toJSON(),
     alerts,
-    message:
-      alerts.length > 0
-        ? `Record added — ${alerts.length} safety alert${alerts.length > 1 ? 's' : ''} found. Please review.`
-        : 'Record added successfully.',
+    followUp,
+    message: notes.length > 0 ? `Record added — ${notes.join(' ')}` : 'Record added successfully.',
   };
 };
 
@@ -318,15 +347,22 @@ const listRecordsForLink = async (hospitalId, linkId, filters = {}) => {
 
 /** Dashboard counts for the patient summary. */
 const countsForPatient = async (patientId) => {
-  const [totalRecords, activePrescriptions] = await Promise.all([
+  const [totalRecords, activePrescriptions, followUps] = await Promise.all([
     MedicalRecord.countDocuments({ patient: patientId }),
     MedicalRecord.countDocuments({
       patient: patientId,
       type: 'prescription',
       isActivePrescription: true,
     }),
+    followupService.countsForPatient(patientId),
   ]);
-  return { totalRecords, activePrescriptions };
+  return {
+    totalRecords,
+    activePrescriptions,
+    openLoops: followUps.openLoops,
+    overdueFollowUps: followUps.overdue,
+    followUpsNeedingConfirmation: followUps.needsConfirm,
+  };
 };
 
 module.exports = {

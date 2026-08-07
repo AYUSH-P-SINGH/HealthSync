@@ -8,6 +8,7 @@ const Claim = require('../models/Claim');
 const ApiError = require('../utils/ApiError');
 const auditService = require('./audit.service');
 const logger = require('../utils/logger');
+const socket = require('../socket');
 
 /**
  * Search patient by HealthSync ID (returns masked, non-confidential info).
@@ -92,6 +93,9 @@ const requestAccess = async (insuranceId, { healthSyncId, purpose, permissions, 
     metadata: { patientId: patient._id, consentId: consent._id },
   });
 
+  // Real-time: the patient sees the request instantly.
+  socket.emitToUser(patient._id, 'consent:request', { consentId: consent._id });
+
   return consent;
 };
 
@@ -141,6 +145,9 @@ const respondToInsuranceRequest = async (patientId, linkId, { action, permission
     metadata: { consentId: consent._id, insuranceId: consent.insurance },
   });
 
+  // Real-time: the insurer sees the decision instantly.
+  socket.emitToUser(consent.insurance, 'consent:updated', { consentId: consent._id, status: consent.status });
+
   return consent;
 };
 
@@ -169,6 +176,8 @@ const revokeInsuranceConsent = async (patientId, linkId) => {
     success: true,
     metadata: { consentId: consent._id, insuranceId: consent.insurance },
   });
+
+  socket.emitToUser(consent.insurance, 'consent:updated', { consentId: consent._id, status: 'revoked' });
 
   return consent;
 };
@@ -322,6 +331,8 @@ const issuePolicy = async (insuranceId, { patientId, type, coverageAmount, premi
     metadata: { policyId: policy._id, recordHash },
   });
 
+  socket.emitToUser(patientId, 'policy:new', { policyId: policy._id });
+
   return { policy, disclosure };
 };
 
@@ -345,7 +356,21 @@ const submitClaim = async (patientId, { policyId, hospitalName, diagnosis, claim
     throw ApiError.notFound('Active insurance policy not found for this patient.');
   }
 
-  const claimNumber = `CLM-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+  // Generate a collision-safe claim number (claimNumber is unique-indexed;
+  // pure Math.random() could collide and crash the insert).
+  let claimNumber;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = `CLM-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    // eslint-disable-next-line no-await-in-loop
+    const exists = await Claim.exists({ claimNumber: candidate });
+    if (!exists) {
+      claimNumber = candidate;
+      break;
+    }
+  }
+  if (!claimNumber) {
+    throw ApiError.internal('Could not generate a unique claim number. Please retry.');
+  }
 
   const claim = await Claim.create({
     patient: patientId,
@@ -375,6 +400,8 @@ const submitClaim = async (patientId, { policyId, hospitalName, diagnosis, claim
     success: true,
     metadata: { claimId: claim._id, claimNumber },
   });
+
+  socket.emitToUser(policy.insurance, 'claim:new', { claimId: claim._id });
 
   return claim;
 };
@@ -421,6 +448,8 @@ const updateClaimStatus = async (insuranceId, claimId, { status, approvedAmount,
     success: true,
     metadata: { claimId: claim._id, status },
   });
+
+  socket.emitToUser(claim.patient, 'claim:updated', { claimId: claim._id, status });
 
   return claim;
 };

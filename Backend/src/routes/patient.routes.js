@@ -27,7 +27,18 @@ const {
   issueConsentValidator,
   consentIdValidator,
 } = require('../validators/consent.validator');
+const followupController = require('../controllers/followup.controller');
+const {
+  followUpIdValidator,
+  scanValidator,
+  listFollowUpsValidator,
+  confirmValidator,
+  scheduleValidator,
+  dismissValidator,
+} = require('../validators/followup.validator');
 const { profileUpload } = require('../config/upload.config');
+const { reportUpload, handleUploadError } = require('../config/reportUpload.config');
+const { reportScanLimiter } = require('../middleware/rateLimiter');
 
 const router = Router();
 
@@ -100,8 +111,33 @@ router.patch('/insurance-requests/:linkId/revoke', patientController.revokeInsur
 router.get('/policies', patientController.listPatientPolicies);
 
 // Submit and track insurance claims
-router.post('/claims', patientController.submitPatientClaim);
+const { submitClaimValidator } = require('../validators/insurance.validator');
+router.post('/claims', submitClaimValidator, validate, patientController.submitPatientClaim);
 router.get('/claims', patientController.listPatientClaims);
+
+// ─── Claim Interaction: patient ↔ insurer ──────────────
+const {
+  sendMessageValidator,
+  getMessagesValidator,
+  fulfillDocumentValidator,
+  fileAppealValidator,
+} = require('../validators/claimInteraction.validator');
+
+// Unread message counts across all my claims (for badges)
+router.get('/claims/unread', patientController.getClaimUnreadCounts);
+
+// Fetch a single claim (used to refresh after a live socket event)
+router.get('/claims/:claimId', getMessagesValidator, validate, patientController.getClaimById);
+
+// Secure messaging thread with the insurer, scoped to a claim
+router.get('/claims/:claimId/messages', getMessagesValidator, validate, patientController.getClaimMessages);
+router.post('/claims/:claimId/messages', sendMessageValidator, validate, patientController.sendClaimMessage);
+
+// Upload a document against a specific insurer request
+router.post('/claims/:claimId/documents/:requestId', fulfillDocumentValidator, validate, patientController.fulfillClaimDocument);
+
+// File a formal appeal against a claim decision
+router.post('/claims/:claimId/appeal', fileAppealValidator, validate, patientController.appealClaim);
 
 // ─── Medical records ───────────────────────────────────
 
@@ -142,5 +178,62 @@ router.patch(
   consentController.revokeConsent
 );
 
+// ─── Follow-up obligations (clinical loop closure) ─────
+//
+// A follow-up is a promise a report made about the future ("repeat CT in 6
+// months"). These endpoints let the patient see, confirm and resolve those
+// promises — the hospital-side safety net lives in hospital.routes.js.
+
+// List my follow-ups (?status=active|open|overdue|... , ?includeResolved=true)
+router.get(
+  '/followups',
+  listFollowUpsValidator,
+  validate,
+  followupController.listMyFollowUps
+);
+
+// Scan one or more reports for follow-up recommendations.
+// Accepts multipart `report` (a single PDF/image, or a whole folder of page
+// images) or JSON `text`. Rate-limited per user because this decodes binaries
+// and runs OCR.
+router.post(
+  '/followups/scan',
+  reportScanLimiter,
+  reportUpload.array('report'),
+  handleUploadError,
+  scanValidator,
+  validate,
+  followupController.scanMyReport
+);
+
+// Promote a low-confidence extraction into a tracked obligation
+router.patch(
+  '/followups/:followUpId/confirm',
+  confirmValidator,
+  validate,
+  followupController.confirmFollowUp
+);
+
+// Mark as booked / done
+router.patch(
+  '/followups/:followUpId/schedule',
+  scheduleValidator,
+  validate,
+  followupController.scheduleFollowUp
+);
+router.patch(
+  '/followups/:followUpId/complete',
+  followUpIdValidator,
+  validate,
+  followupController.completeFollowUp
+);
+
+// Dismiss — reason is mandatory and recorded against the actor
+router.patch(
+  '/followups/:followUpId/dismiss',
+  dismissValidator,
+  validate,
+  followupController.dismissFollowUp
+);
 
 module.exports = router;

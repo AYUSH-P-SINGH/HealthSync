@@ -24,6 +24,14 @@ const {
   claimConsentValidator,
   consentRecordsValidator,
 } = require('../validators/consent.validator');
+const followupController = require('../controllers/followup.controller');
+const {
+  providerScopeValidator,
+  providerActionValidator,
+  scanValidator,
+} = require('../validators/followup.validator');
+const { reportUpload, handleUploadError } = require('../config/reportUpload.config');
+const { reportScanLimiter } = require('../middleware/rateLimiter');
 
 const router = Router();
 
@@ -99,6 +107,41 @@ router.get(
   consentRecordsValidator,
   validate,
   consentController.getConsentRecords
+);
+
+// ─── Follow-up obligations (the safety net) ────────────
+//
+// This is the cross-institution part: a clinician opening a patient's chart
+// sees OVERDUE follow-ups issued by ANY hospital, not just this one. Access
+// is re-derived from an active patient link or a live consent grant on every
+// single call — the patient id is never taken from the request.
+
+// Open loops for a patient this hospital may currently see
+router.get(
+  '/followups',
+  providerScopeValidator,
+  validate,
+  followupController.listPatientFollowUps
+);
+
+// Act on one: schedule / complete / dismiss (dismissal requires a reason)
+router.patch(
+  '/followups/:followUpId',
+  providerActionValidator,
+  validate,
+  followupController.actOnPatientFollowUp
+);
+
+// Scan a report this hospital is filing for a linked patient
+router.post(
+  '/patients/:linkId/followups/scan',
+  reportScanLimiter,
+  linkIdValidator,
+  reportUpload.array('report'),
+  handleUploadError,
+  scanValidator,
+  validate,
+  followupController.scanForPatient
 );
 
 module.exports = router;

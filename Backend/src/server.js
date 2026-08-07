@@ -18,7 +18,7 @@ const startServer = async () => {
     // Connect to MongoDB
     await connectDB();
 
-    // Start Express server
+    // Start Express server (Socket.IO attaches to the same HTTP server)
     const server = app.listen(PORT, () => {
       console.log(`  HealthSync API Server`);
       console.log(`  Environment: ${process.env.NODE_ENV}`);
@@ -27,6 +27,15 @@ const startServer = async () => {
       // Diagnostic: confirms which route modules THIS process actually loaded.
       console.log(`  Routes:      /api/auth, /api/patients, /api/hospitals`);
     });
+
+    // Real-time layer (JWT-authenticated Socket.IO on the same port)
+    require('./socket').init(server);
+
+    // Follow-up clock — escalates overdue obligations and sends reminders.
+    // Runs in-process; see jobs/followupScheduler.js before scaling to more
+    // than one API instance.
+    const followupScheduler = require('./jobs/followupScheduler');
+    followupScheduler.start();
 
     // Fail loudly if the port is already taken by a stale process — otherwise
     // an old server keeps answering requests with outdated code.
@@ -44,6 +53,10 @@ const startServer = async () => {
     // ─── Graceful Shutdown ─────────────────────────────
     const gracefulShutdown = (signal) => {
       console.log(`\n${signal} received. Shutting down gracefully...`);
+      followupScheduler.stop();
+      // Tesseract runs in worker threads that would otherwise keep the
+      // process alive past server.close().
+      require('./services/ocr.service').shutdown().catch(() => {});
       server.close(() => {
         console.log('HTTP server closed.');
         const mongoose = require('mongoose');

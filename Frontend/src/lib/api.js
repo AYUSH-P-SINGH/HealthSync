@@ -115,6 +115,20 @@ export const patientApi = {
   listClaims: (token) =>
     request("/patients/claims", { token }),
 
+  // ─── Claim interaction (messaging, documents, appeals) ───
+  getClaimUnreadCounts: (token) =>
+    request("/patients/claims/unread", { token }),
+  getClaim: (claimId, token) =>
+    request(`/patients/claims/${claimId}`, { token }),
+  getClaimMessages: (claimId, token) =>
+    request(`/patients/claims/${claimId}/messages`, { token }),
+  sendClaimMessage: (claimId, payload, token) =>
+    request(`/patients/claims/${claimId}/messages`, { method: "POST", body: payload, token }),
+  fulfillClaimDocument: (claimId, requestId, payload, token) =>
+    request(`/patients/claims/${claimId}/documents/${requestId}`, { method: "POST", body: payload, token }),
+  appealClaim: (claimId, reason, token) =>
+    request(`/patients/claims/${claimId}/appeal`, { method: "POST", body: { reason }, token }),
+
   // ─── Medical records & timeline ───
   // filters: { type, hospitalId ('self' = self-reported), condition, from, to, q }
   listRecords: (token, filters) => request(`/patients/records${qs(filters)}`, { token }),
@@ -139,6 +153,64 @@ export const patientApi = {
   revokeConsent: (consentId, token) =>
     request(`/patients/consents/${consentId}/revoke`, { method: "PATCH", token }),
 
+  // ─── Follow-up obligations (clinical loop closure) ───
+  // filters: { status: 'active'|'open'|'overdue'|'pending_confirm', includeResolved }
+  listFollowUps: (token, filters) => request(`/patients/followups${qs(filters)}`, { token }),
+
+  /**
+   * Scan one or more reports for follow-up recommendations.
+   *
+   * `files` may be a single File or an array (a folder of page images). They
+   * are appended in the order given, and the server re-sorts by filename
+   * naturally, so page10 never lands before page2.
+   *
+   * `dryRun` previews the extraction without storing anything, so the patient
+   * sees what we found before it becomes a tracked obligation.
+   */
+  scanReport: ({ file, files, text, recordDate, sourceRecordId, dryRun }, token) => {
+    const list = files?.length ? files : file ? [file] : [];
+
+    if (list.length) {
+      const formData = new FormData();
+      // Same field name for every file — the server takes `report` as an array.
+      list.forEach((f) => formData.append("report", f, f.name));
+      if (recordDate) formData.append("recordDate", recordDate);
+      if (sourceRecordId) formData.append("sourceRecordId", sourceRecordId);
+      if (dryRun) formData.append("dryRun", "true");
+      return request("/patients/followups/scan", { method: "POST", formData, token });
+    }
+    return request("/patients/followups/scan", {
+      method: "POST",
+      body: { text, recordDate, sourceRecordId, dryRun },
+      token,
+    });
+  },
+
+  confirmFollowUp: (followUpId, dueAt, token) =>
+    request(`/patients/followups/${followUpId}/confirm`, {
+      method: "PATCH",
+      body: { dueAt },
+      token,
+    }),
+  scheduleFollowUp: (followUpId, scheduledFor, token) =>
+    request(`/patients/followups/${followUpId}/schedule`, {
+      method: "PATCH",
+      body: { scheduledFor },
+      token,
+    }),
+  completeFollowUp: (followUpId, token) =>
+    request(`/patients/followups/${followUpId}/complete`, { method: "PATCH", token }),
+  dismissFollowUp: (followUpId, reason, token) =>
+    request(`/patients/followups/${followUpId}/dismiss`, {
+      method: "PATCH",
+      body: { reason },
+      token,
+    }),
+
+  // Development-only demo helper — fast-forwards the caller's own follow-up
+  // clock so the escalation ladder can be shown without waiting months.
+  advanceFollowUpClock: (days, token) =>
+    request("/dev/followups/advance-clock", { method: "POST", body: { days }, token }),
 };
 
 /**
@@ -174,6 +246,37 @@ export const hospitalApi = {
   listConsents: (token) => request("/hospitals/consents", { token }),
   getConsentRecords: (consentId, token, type) =>
     request(`/hospitals/consents/${consentId}/records${qs({ type })}`, { token }),
+
+  // ─── Follow-up safety net ───
+  // Overdue follow-ups for this patient from ANY hospital. Requires exactly
+  // one access basis: an active link, or a claimed consent grant.
+  listPatientFollowUps: (token, { linkId, consentId }) =>
+    request(`/hospitals/followups${qs({ linkId, consentId })}`, { token }),
+
+  // action: 'schedule' | 'complete' | 'dismiss' (dismiss requires a reason)
+  actOnFollowUp: (followUpId, payload, token) =>
+    request(`/hospitals/followups/${followUpId}`, { method: "PATCH", body: payload, token }),
+
+  scanPatientReport: (linkId, { file, files, text, recordDate, dryRun }, token) => {
+    const list = files?.length ? files : file ? [file] : [];
+
+    if (list.length) {
+      const formData = new FormData();
+      list.forEach((f) => formData.append("report", f, f.name));
+      if (recordDate) formData.append("recordDate", recordDate);
+      if (dryRun) formData.append("dryRun", "true");
+      return request(`/hospitals/patients/${linkId}/followups/scan`, {
+        method: "POST",
+        formData,
+        token,
+      });
+    }
+    return request(`/hospitals/patients/${linkId}/followups/scan`, {
+      method: "POST",
+      body: { text, recordDate, dryRun },
+      token,
+    });
+  },
 };
 
 /**
@@ -211,4 +314,18 @@ export const insuranceApi = {
   listClaims: (token) => request("/insurance/claims", { token }),
   updateClaimStatus: (claimId, payload, token) =>
     request(`/insurance/claims/${claimId}/status`, { method: "PATCH", body: payload, token }),
+
+  // ─── Claim interaction (messaging, documents, appeals) ───
+  getClaimUnreadCounts: (token) =>
+    request("/insurance/claims/unread", { token }),
+  getClaim: (claimId, token) =>
+    request(`/insurance/claims/${claimId}`, { token }),
+  getClaimMessages: (claimId, token) =>
+    request(`/insurance/claims/${claimId}/messages`, { token }),
+  sendClaimMessage: (claimId, payload, token) =>
+    request(`/insurance/claims/${claimId}/messages`, { method: "POST", body: payload, token }),
+  requestClaimDocuments: (claimId, items, token) =>
+    request(`/insurance/claims/${claimId}/document-requests`, { method: "POST", body: { items }, token }),
+  resolveClaimAppeal: (claimId, payload, token) =>
+    request(`/insurance/claims/${claimId}/appeal`, { method: "PATCH", body: payload, token }),
 };

@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Pill, Plus, Loader2, CircleAlert } from "lucide-react";
+import { FileText, Pill, Plus, Loader2, CircleAlert, ScanLine } from "lucide-react";
 import { patientApi } from "../lib/api.js";
 import RecordCard from "./RecordCard.jsx";
 import RecordFormModal from "./RecordFormModal.jsx";
+import ScanReportModal from "./ScanReportModal.jsx";
 
 /**
  * Patient "Health Records" view — real records + prescriptions from the
  * backend, with self-upload for digitizing old paper reports.
  */
-export default function RecordsView({ accessToken, initialTab = "records", onCountsChanged }) {
+export default function RecordsView({
+  accessToken,
+  initialTab = "records",
+  onCountsChanged,
+  onFollowUpsFound,
+}) {
   const [tab, setTab] = useState(initialTab); // "records" | "prescriptions"
+  const [scanOpen, setScanOpen] = useState(false);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -97,13 +104,26 @@ export default function RecordsView({ accessToken, initialTab = "records", onCou
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
-        >
-          <Plus size={15} /> Add Record
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Secondary placement. Users come here holding a report, so this is
+              the second most likely place they'll look for "scan" — but it
+              stays visually subordinate to Add Record, which is still the
+              primary action on this screen. */}
+          <button
+            type="button"
+            onClick={() => setScanOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            <ScanLine size={15} /> Scan for follow-ups
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+          >
+            <Plus size={15} /> Add Record
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -151,6 +171,18 @@ export default function RecordsView({ accessToken, initialTab = "records", onCou
         onSubmit={handleCreated}
         heading="Add a self-reported record"
         subheading="Digitize an old report or note something your doctor told you. Self-reported entries are labelled as such."
+      />
+
+      <ScanReportModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        accessToken={accessToken}
+        onSaved={(data) => {
+          onCountsChanged?.();
+          // Hand off to the Follow-ups tab so the user lands where their new
+          // items actually live, rather than back on an unchanged record list.
+          if (data?.created?.length) onFollowUpsFound?.(data);
+        }}
       />
     </div>
   );

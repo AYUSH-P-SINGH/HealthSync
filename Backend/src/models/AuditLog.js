@@ -57,6 +57,21 @@ const auditLogSchema = new mongoose.Schema(
         'ADVISORY_UPDATED',
         'ADVISORY_DELETED',
 
+        // Follow-up obligations (clinical loop closure)
+        // Every transition is logged because an unmet follow-up is exactly
+        // the kind of thing that gets litigated years later — "who knew what,
+        // and when" must be answerable from the record, not reconstructed.
+        'FOLLOWUP_EXTRACTED',        // scan produced candidate obligations
+        'FOLLOWUP_CREATED',
+        'FOLLOWUP_CONFIRMED',        // patient promoted pending_confirm -> open
+        'FOLLOWUP_SCHEDULED',
+        'FOLLOWUP_COMPLETED',
+        'FOLLOWUP_AUTO_CLOSED',      // satisfied by a matching new record
+        'FOLLOWUP_DISMISSED',        // reason is mandatory; actor is recorded
+        'FOLLOWUP_OVERDUE',          // system escalation
+        'FOLLOWUP_NOTIFIED',
+        'FOLLOWUP_VIEWED_BY_PROVIDER',
+        'FOLLOWUP_SCAN_UPLOADED',
       ],
       index: true,
     },

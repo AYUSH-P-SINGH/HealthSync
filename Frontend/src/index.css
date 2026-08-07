@@ -22,4 +22,22 @@ body {
   background: #fff;
   color: #1e293b;
   -webkit-font-smoothing: antialiased;
+  /* Never paint a blinking text caret on non-editable UI (tabs, buttons,
+     headings). Real form fields re-enable it below. */
+  caret-color: transparent;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  caret-color: auto;
+}
+
+/* Buttons and role tabs are controls, not text: no I-beam cursor and
+   no accidental text selection on click. */
+button {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }

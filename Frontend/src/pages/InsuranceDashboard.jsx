@@ -19,9 +19,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { insuranceApi } from "../lib/api.js";
+import ClaimDetailDrawer from "../components/ClaimDetailDrawer.jsx";
+import { onSocketEvent } from "../lib/socket.js";
 
 export default function InsuranceDashboard() {
-  const { user, token, logout } = useAuth();
+  // AuthContext exposes `accessToken` (not `token`) — alias it locally.
+  // Destructuring a non-existent `token` sent every request without an
+  // Authorization header, causing 401 "not authorized" on this dashboard.
+  const { user, accessToken: token, logout } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
 
   // State
@@ -69,6 +74,8 @@ export default function InsuranceDashboard() {
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState(null);
+  const [openClaim, setOpenClaim] = useState(null);
+  const [unreadCounts, setUnreadCounts] = useState({});
   const [claimActionForm, setClaimActionForm] = useState({
     status: "approved",
     approvedAmount: 0,
@@ -122,6 +129,8 @@ export default function InsuranceDashboard() {
       setLoadingClaims(true);
       const res = await insuranceApi.listClaims(token);
       setClaims(res.data || []);
+      const unreadRes = await insuranceApi.getClaimUnreadCounts(token).catch(() => ({ data: {} }));
+      setUnreadCounts(unreadRes.data || {});
     } catch (err) {
       setError(err.message || "Failed to load claims.");
     } finally {
@@ -141,6 +150,26 @@ export default function InsuranceDashboard() {
     }
     if (activeTab === "claims") fetchClaims();
   }, [activeTab]);
+
+  // Live updates: refetch the dashboard summary and whichever tab is
+  // currently open the instant a patient acts on a consent request or a
+  // claim thread changes — no manual refresh, no polling.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const refresh = () => {
+      fetchSummary();
+      if (activeTab === "patients") fetchPatients();
+      if (activeTab === "policies") {
+        fetchPatients();
+        fetchPolicies();
+      }
+      if (activeTab === "claims") fetchClaims();
+    };
+
+    const events = ["consent:updated", "claim:new", "claim:updated", "claim:message"];
+    const unsubscribers = events.map((event) => onSocketEvent(event, refresh));
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, [activeTab, token]);
 
   // Handle Search Patient by HealthSync ID
   const handleSearch = async (e) => {
@@ -967,20 +996,33 @@ export default function InsuranceDashboard() {
                             </span>
                           </td>
                           <td className="p-3 text-right">
-                            <button
-                              onClick={() => {
-                                setSelectedClaim(c);
-                                setClaimActionForm({
-                                  status: c.status,
-                                  approvedAmount: c.claimAmount,
-                                  rejectionReason: "",
-                                  comment: "",
-                                });
-                              }}
-                              className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                            >
-                              Process
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setOpenClaim(c)}
+                                className="relative rounded-lg bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700"
+                              >
+                                Open
+                                {unreadCounts[c._id] > 0 && (
+                                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                                    {unreadCounts[c._id]}
+                                  </span>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedClaim(c);
+                                  setClaimActionForm({
+                                    status: c.status,
+                                    approvedAmount: c.claimAmount,
+                                    rejectionReason: "",
+                                    comment: "",
+                                  });
+                                }}
+                                className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                              >
+                                Process
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1076,6 +1118,23 @@ export default function InsuranceDashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Claim workspace drawer: timeline, messaging, documents, appeal */}
+        {openClaim && (
+          <ClaimDetailDrawer
+            claim={openClaim}
+            role="insurance"
+            token={token}
+            onClose={() => {
+              setOpenClaim(null);
+              fetchClaims();
+            }}
+            onClaimUpdated={(updated) => {
+              setOpenClaim(updated);
+              setClaims((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
+            }}
+          />
         )}
       </main>
     </div>

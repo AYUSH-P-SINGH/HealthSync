@@ -90,9 +90,27 @@ const sendPasswordResetEmail = async (email, token) => {
   return sendEmail({ to: email, subject, text, html });
 };
 
+/**
+ * Send a claim-related notification (status change, new message,
+ * document request/fulfilment, appeal). Fire-and-forget by callers.
+ */
+const sendClaimNotificationEmail = async ({ to, claimNumber, title, detail }) => {
+  const claimsLink = `${process.env.CLIENT_URL}/dashboard`;
+  const subject = `[HealthSync] ${title} — Claim ${claimNumber}`;
+  const text = `${title} on claim ${claimNumber}. ${detail} View the claim in your HealthSync dashboard: ${claimsLink}`;
+  const html = `
+    <h3>${title}</h3>
+    <p><strong>Claim:</strong> ${claimNumber}</p>
+    <p>${detail}</p>
+    <p><a href="${claimsLink}" target="_blank">Open your HealthSync dashboard</a> to view the claim and respond.</p>
+  `;
+  return sendEmail({ to, subject, text, html });
+};
+
 module.exports = {
   isEmailConfigured,
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendClaimNotificationEmail,
 };

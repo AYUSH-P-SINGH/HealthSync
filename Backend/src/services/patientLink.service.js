@@ -12,6 +12,7 @@ const User = require('../models/User');
 const auditService = require('./audit.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
+const socket = require('../socket');
 
 const PATIENT_ID_RE = /^HS-[0-9A-F]{8}$/i;
 
@@ -147,6 +148,9 @@ const requestLink = async (hospitalId, query, ip, userAgent) => {
 
   logger.info('Patient link requested', { hospitalId, patientId: user.patientId });
 
+  // Real-time: the patient sees the request instantly.
+  socket.emitToUser(user._id, 'link:request', { linkId: link._id });
+
   await link.populate('patient');
 
   return {
@@ -273,6 +277,9 @@ const respondToRequest = async (userId, linkId, action, ip, userAgent) => {
 
   logger.info('Patient responded to hospital link request', { userId, linkId, approved });
 
+  // Real-time: the hospital sees the decision instantly.
+  socket.emitToUser(link.hospital, 'link:updated', { linkId: link._id, status: link.status });
+
   return {
     link: link.toJSON(),
     message: approved
@@ -307,6 +314,8 @@ const revokeLink = async (userId, linkId, ip, userAgent) => {
     success: true,
     metadata: { linkId: link._id, hospitalId: link.hospital },
   });
+
+  socket.emitToUser(link.hospital, 'link:updated', { linkId: link._id, status: 'discharged' });
 
   return { link: link.toJSON(), message: 'Hospital access revoked.' };
 };
