@@ -195,17 +195,18 @@ describe('Step 1 + Step 2: Full AI Pipeline Verification', () => {
     await RefreshToken.deleteMany({});
     await AuditLog.deleteMany({});
 
-    // Register, verify, and login
-    await request(app).post('/api/auth/register').send(patientUser);
-    const rawToken = emailService.sendVerificationEmail.mock.calls[0][1];
-    await request(app).post('/api/auth/verify-email').send({ token: rawToken });
+    const tokenService = require('../src/services/token.service');
 
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: patientUser.email, password: patientUser.password });
+    const user = await User.create({
+      fullName: { firstName: patientUser.firstName, lastName: patientUser.lastName },
+      email: patientUser.email,
+      mobileNumber: patientUser.mobileNumber,
+      password: patientUser.password,
+      isVerified: true,
+    });
 
-    accessToken = loginRes.body.data.accessToken;
-    userId = loginRes.body.data.user._id;
+    accessToken = tokenService.generateAccessToken(user._id.toString(), 'user');
+    userId = user._id;
   });
 
   // ─── Helper: create a record via API ──────────────────
