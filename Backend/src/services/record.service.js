@@ -16,6 +16,7 @@ const Hospital = require('../models/Hospital');
 const interactionService = require('./interaction.service');
 const followupService = require('./followup.service');
 const auditService = require('./audit.service');
+const aiService = require('./ai/ai.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const { RECORD_TYPES } = require('../constants/recordTypes');
@@ -31,6 +32,9 @@ const buildRecordFields = (body) => {
     condition: body.condition || null,
     doctorName: body.doctorName || null,
     recordDate: body.recordDate ? new Date(body.recordDate) : new Date(),
+    // rawText is only populated by the scan/OCR pipeline, never from user form input.
+    // When passed from a controller that ran OCR, it carries the extracted text.
+    rawText: body.rawText || '',
     medicines: [],
     labResults: [],
     isActivePrescription: null,
@@ -60,12 +64,32 @@ const createRecord = async ({ patientId, hospitalId, createdByRole, body, ip, us
     alerts = await interactionService.checkPrescription(patientId, fields.medicines);
   }
 
+  // AI summary generation — only attempted when rawText exists.
+  // aiSummary is NEVER accepted from the HTTP request body; it is only set here.
+  let aiStatus = 'none';
+  let aiSummary = null;
+
+  if (fields.rawText && aiService.isEnabled()) {
+    try {
+      const aiResult = await aiService.analyzeMedicalText(fields.rawText);
+      aiStatus = aiResult.status;
+      aiSummary = aiResult.summary;
+    } catch (err) {
+      aiStatus = 'failed';
+      logger.error('AI summary generation failed during record creation', {
+        error: err.message,
+      });
+    }
+  }
+
   const record = await MedicalRecord.create({
     ...fields,
     patient: patientId,
     hospital: hospitalId || null,
     createdByRole,
     alerts,
+    aiStatus,
+    aiSummary,
   });
 
   auditService.logAuthEvent({

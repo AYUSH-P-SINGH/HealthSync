@@ -45,6 +45,25 @@ const alertSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const aiSummarySchema = new mongoose.Schema(
+  {
+    summary: { type: String, default: '' },
+    keyFindings: [{ type: String }],
+    abnormalValues: [
+      {
+        test: { type: String, required: true },
+        value: { type: String, default: '' },
+        referenceRange: { type: String, default: '' },
+        flag: { type: String, enum: ['normal', 'low', 'high', 'critical', null], default: null },
+      },
+    ],
+    medications: [medicineSchema],
+    recommendations: [{ type: String }],
+    generatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const medicalRecordSchema = new mongoose.Schema(
   {
     patient: {
@@ -88,6 +107,20 @@ const medicalRecordSchema = new mongoose.Schema(
 
     // Safety alerts produced at creation time (interaction/allergy checks)
     alerts: { type: [alertSchema], default: [] },
+
+    // Raw OCR / PDF extracted text preserved for RAG, citations, and auditing.
+    // Capped at 100 000 chars (~25 000 tokens) to prevent document bloat.
+    rawText: { type: String, default: '', maxlength: 100000 },
+
+    // AI processing lifecycle: none → pending → completed | failed
+    aiStatus: {
+      type: String,
+      enum: ['none', 'pending', 'completed', 'failed'],
+      default: 'none',
+    },
+
+    // AI-generated plain English summary and structured breakdown
+    aiSummary: { type: aiSummarySchema, default: null },
   },
   { timestamps: true }
 );
