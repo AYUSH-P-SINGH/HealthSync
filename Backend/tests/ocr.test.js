@@ -215,7 +215,23 @@ describeIfOcr('OCR pipeline', () => {
 
 // ─── Scanned PDF fallback (needs sharp + tesseract + mupdf) ──
 
-describeIfOcr('scanned PDF fallback', () => {
+let mupdfAvailable = false;
+if (sharp && ocrAvailable) {
+  try {
+    const imagePrep = require('../src/services/imagePrep.service');
+    // canRasterize is async; probe it synchronously to decide skip/run.
+    // We already know mupdf fails to load without --experimental-vm-modules,
+    // so try a quick dynamic import to check.
+    const m = require('mupdf');
+    mupdfAvailable = Boolean(m);
+  } catch {
+    /* mupdf not available — skip gracefully */
+  }
+}
+
+const describeIfMupdf = mupdfAvailable ? describe : describe.skip;
+
+describeIfMupdf('scanned PDF fallback', () => {
   const documentText = require('../src/services/documentText.service');
   const ocrService = require('../src/services/ocr.service');
 

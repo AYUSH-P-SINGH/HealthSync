@@ -37,27 +37,27 @@ const processAndStoreRecordChunks = async ({ recordId, patientId, rawText, metad
     const chunks = chunkingService.chunkText(text);
     if (chunks.length === 0) return [];
 
-    // 3. Generate embeddings & build documents
-    const chunkDocs = [];
-    for (const chunk of chunks) {
-      const embedding = await embeddingService.generateEmbedding(chunk.text);
-      chunkDocs.push({
-        record: recordId,
-        patient: patientId,
-        chunkIndex: chunk.chunkIndex,
-        totalChunks: chunk.totalChunks,
-        text: chunk.text,
-        embedding,
-        tokenCount: chunk.tokenCount,
-        startCharIndex: chunk.startCharIndex,
-        endCharIndex: chunk.endCharIndex,
-        metadata: {
-          recordType: metadata.recordType || 'other',
-          recordTitle: metadata.recordTitle || '',
-          recordDate: metadata.recordDate ? new Date(metadata.recordDate) : new Date(),
-        },
-      });
-    }
+    // 3. Generate embeddings concurrently & build documents
+    const embeddings = await Promise.all(
+      chunks.map((chunk) => embeddingService.generateEmbedding(chunk.text))
+    );
+
+    const chunkDocs = chunks.map((chunk, idx) => ({
+      record: recordId,
+      patient: patientId,
+      chunkIndex: chunk.chunkIndex,
+      totalChunks: chunk.totalChunks,
+      text: chunk.text,
+      embedding: embeddings[idx],
+      tokenCount: chunk.tokenCount,
+      startCharIndex: chunk.startCharIndex,
+      endCharIndex: chunk.endCharIndex,
+      metadata: {
+        recordType: metadata.recordType || 'other',
+        recordTitle: metadata.recordTitle || '',
+        recordDate: metadata.recordDate ? new Date(metadata.recordDate) : new Date(),
+      },
+    }));
 
     // 4. Save to MongoDB in bulk
     const savedChunks = await MedicalRecordChunk.insertMany(chunkDocs);

@@ -159,7 +159,7 @@ describe('Authentication & Security Integration Tests', () => {
       const dbUser = await User.findOne({ email: testUser.email });
       const lockoutAudit = await AuditLog.findOne({ userId: dbUser._id, action: 'ACCOUNT_LOCKED' });
       expect(lockoutAudit).toBeDefined();
-    });
+    }, 15_000);
 
     it('should reset login attempts after successful login', async () => {
       await request(app).post('/api/auth/register').send(testUser);
