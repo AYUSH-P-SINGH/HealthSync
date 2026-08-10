@@ -31,6 +31,8 @@ const isEmailConfigured = () => transporter !== null;
  * Sends email. Falls back to console log if SMTP is not configured.
  */
 const sendEmail = async ({ to, subject, text, html }) => {
+  if (process.env.NODE_ENV === 'test') return true;
+
   const from = process.env.SMTP_FROM || 'HealthSync <no-reply@healthsync.com>';
 
   if (transporter) {

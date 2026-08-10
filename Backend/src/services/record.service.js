@@ -17,6 +17,7 @@ const interactionService = require('./interaction.service');
 const followupService = require('./followup.service');
 const auditService = require('./audit.service');
 const aiService = require('./ai/ai.service');
+const vectorService = require('./ai/vector.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const { RECORD_TYPES } = require('../constants/recordTypes');
@@ -91,6 +92,26 @@ const createRecord = async ({ patientId, hospitalId, createdByRole, body, ip, us
     aiStatus,
     aiSummary,
   });
+
+  // Step 3 Target: Process rawText into chunks and store vector embeddings
+  if (fields.rawText) {
+    try {
+      await vectorService.processAndStoreRecordChunks({
+        recordId: record._id,
+        patientId,
+        rawText: fields.rawText,
+        metadata: {
+          recordType: fields.type,
+          recordTitle: fields.title,
+          recordDate: fields.recordDate,
+        },
+      });
+    } catch (err) {
+      logger.error('Failed to generate vector chunks during record creation', {
+        error: err.message,
+      });
+    }
+  }
 
   auditService.logAuthEvent({
     userId: actorId,
@@ -291,6 +312,7 @@ const deletePatientRecord = async (patientId, recordId, ip, userAgent) => {
     throw ApiError.forbidden('Hospital-issued records cannot be deleted.');
   }
 
+  await vectorService.removeRecordChunks(record._id);
   await record.deleteOne();
 
   auditService.logAuthEvent({

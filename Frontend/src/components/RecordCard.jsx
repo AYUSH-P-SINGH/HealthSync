@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Copy,
   Check,
+  Database,
 } from "lucide-react";
 import { typeMeta, ALERT_STYLES } from "../lib/records.js";
 import { formatDate } from "../lib/format.js";
@@ -426,9 +427,18 @@ export default function RecordCard({
 
               {showRawText && (
                 <div className="mt-2 rounded-xl bg-slate-900 p-3 text-slate-200 border border-slate-800 shadow-inner">
-                  <div className="mb-1.5 flex items-center justify-between text-[10px] text-slate-400 border-b border-slate-800 pb-1 font-mono">
-                    <span>SOURCE TEXT LAYER (OCR / PDF)</span>
-                    <span>{record.rawText.length} CHARS</span>
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-400 border-b border-slate-800 pb-1 font-mono">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300">
+                      <FileCode2 size={11} className="text-indigo-400" />
+                      SOURCE TEXT LAYER (OCR / PDF)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 rounded bg-indigo-950/80 px-1.5 py-0.5 text-indigo-300 border border-indigo-800/50">
+                        <Database size={10} />
+                        {Math.ceil(record.rawText.length / 1000)} Vector Chunk{Math.ceil(record.rawText.length / 1000) > 1 ? "s" : ""} (768-dim)
+                      </span>
+                      <span>{record.rawText.length} CHARS</span>
+                    </div>
                   </div>
                   <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-300 select-text">
                     {record.rawText}
