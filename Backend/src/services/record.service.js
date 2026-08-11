@@ -35,7 +35,7 @@ const buildRecordFields = (body) => {
     recordDate: body.recordDate ? new Date(body.recordDate) : new Date(),
     // rawText is only populated by the scan/OCR pipeline, never from user form input.
     // When passed from a controller that ran OCR, it carries the extracted text.
-    rawText: body.rawText || '',
+    rawText: body.rawText || body.description || '',
     medicines: [],
     labResults: [],
     isActivePrescription: null,
