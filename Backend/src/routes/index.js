@@ -8,6 +8,7 @@ const patientRoutes = require('./patient.routes');
 const hospitalRoutes = require('./hospital.routes');
 const insuranceRoutes = require('./insurance.routes');
 const advisoryRoutes = require('./advisory.routes');
+const aiRoutes = require('./ai.routes');
 
 const router = Router();
 
@@ -24,6 +25,9 @@ router.use('/hospitals', hospitalRoutes);
 router.use('/insurance', insuranceRoutes);
 // Mount health advisory routes (patient-facing + admin management)
 router.use('/advisories', advisoryRoutes);
+
+// Mount AI RAG routes
+router.use('/ai', aiRoutes);
 
 // Development-only demo utilities (follow-up clock advance).
 // Gate 1 of 3: in production this module is never even required, so the

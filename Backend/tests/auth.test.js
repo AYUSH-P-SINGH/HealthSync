@@ -188,9 +188,11 @@ describe('Authentication & Security Integration Tests', () => {
     let cookie;
 
     beforeEach(async () => {
-      await request(app).post('/api/auth/register').send(testUser);
-      const rawToken = emailService.sendVerificationEmail.mock.calls[0][1];
-      await request(app).post('/api/auth/verify-email').send({ token: rawToken });
+      await User.deleteMany({});
+      jest.clearAllMocks();
+      const regRes = await request(app).post('/api/auth/register').send(testUser);
+      const userId = regRes.body.data._id;
+      await User.findByIdAndUpdate(userId, { isVerified: true });
 
       const loginRes = await request(app)
         .post('/api/auth/login')

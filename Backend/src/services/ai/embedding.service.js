@@ -10,7 +10,7 @@
  */
 const logger = require('../../utils/logger');
 
-const DEFAULT_EMBEDDING_MODEL = 'text-embedding-004';
+const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-2';
 const DEFAULT_DIMENSIONS = 768;
 
 const isEnabled = () =>
@@ -64,17 +64,44 @@ const generateEmbedding = async (text) => {
     const data = await response.json();
     const vector = data.data?.[0]?.embedding;
     if (Array.isArray(vector) && vector.length > 0) {
-      return vector;
+      return validateEmbeddingDimensions(vector);
     }
 
     logger.warn('Embedding API returned invalid vector format');
-    return generateDeterministicMockEmbedding(safeText);
+    return validateEmbeddingDimensions(generateDeterministicMockEmbedding(safeText));
   } catch (err) {
     logger.error('Embedding generation failed', { error: err.message });
-    return generateDeterministicMockEmbedding(safeText);
+    return validateEmbeddingDimensions(generateDeterministicMockEmbedding(safeText));
   } finally {
     clearTimeout(timer);
   }
+};
+
+/**
+ * Validates that an embedding vector matches the required dimension count.
+ * Prevents model configuration changes from corrupting the vector pipeline.
+ *
+ * @param {number[]} vector
+ * @returns {number[]}
+ */
+const validateEmbeddingDimensions = (vector) => {
+  const expectedDim = Number(process.env.EMBEDDING_DIMENSIONS || DEFAULT_DIMENSIONS);
+  if (!Array.isArray(vector) || vector.length !== expectedDim) {
+    throw new Error(`Embedding dimension mismatch: expected ${expectedDim}, got ${vector?.length ?? 'none'}`);
+  }
+  return vector;
+};
+
+/**
+ * Embeds a user search query for vector similarity retrieval.
+ * Uses the exact same model and dimension verification as document chunk embeddings.
+ *
+ * @param {string} text - User query string
+ * @returns {Promise<number[]>} 768-dimensional float array
+ */
+const embedQuery = async (text) => {
+  const vector = await generateEmbedding(text);
+  return validateEmbeddingDimensions(vector);
 };
 
 /**
@@ -83,25 +110,37 @@ const generateEmbedding = async (text) => {
  */
 const generateDeterministicMockEmbedding = (text) => {
   const dimensions = Number(process.env.EMBEDDING_DIMENSIONS || DEFAULT_DIMENSIONS);
-  const vector = new Array(dimensions);
-  let hash = 0;
+  const vector = new Array(dimensions).fill(0);
+  const safeText = String(text || '').toLowerCase();
 
-  for (let i = 0; i < text.length; i++) {
-    hash = (hash << 5) - hash + text.charCodeAt(i);
-    hash |= 0;
+  const words = safeText.match(/\b\w+\b/g) || [];
+  words.forEach((w) => {
+    let hash = 0;
+    for (let i = 0; i < w.length; i++) {
+      hash = (hash << 5) - hash + w.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % dimensions;
+    vector[idx] += 1;
+  });
+
+  let norm = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0));
+  if (norm === 0) {
+    vector[0] = 1;
+    norm = 1;
   }
-
   for (let i = 0; i < dimensions; i++) {
-    const rawVal = Math.sin(hash + i * 0.1);
-    vector[i] = Number(rawVal.toFixed(6));
+    vector[i] = Number((vector[i] / norm).toFixed(6));
   }
 
-  return vector;
+  return validateEmbeddingDimensions(vector);
 };
 
 module.exports = {
   isEnabled,
   generateEmbedding,
+  embedQuery,
+  validateEmbeddingDimensions,
   generateDeterministicMockEmbedding,
   DEFAULT_DIMENSIONS,
 };
