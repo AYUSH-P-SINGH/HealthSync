@@ -3,6 +3,7 @@ import { History, Loader2, CircleAlert, Search, X } from "lucide-react";
 import { patientApi } from "../lib/api.js";
 import { RECORD_TYPES, typeMeta } from "../lib/records.js";
 import RecordCard from "./RecordCard.jsx";
+import HealthAssistant from "./ai/HealthAssistant.jsx";
 
 const inputCls =
   "rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100";
@@ -10,11 +11,13 @@ const inputCls =
 /**
  * Patient health timeline — every record in chronological order, grouped by
  * month, filterable by record type, hospital, condition and date range.
+ * Includes grounded AI Health Assistant at the top.
  */
-export default function TimelineView({ accessToken }) {
+export default function TimelineView({ accessToken, consentId, patientId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
 
   const [type, setType] = useState("");
   const [hospitalId, setHospitalId] = useState("");
@@ -50,8 +53,22 @@ export default function TimelineView({ accessToken }) {
     setTo("");
   };
 
+  const handleSelectRecord = (recordId) => {
+    setSelectedRecordId(recordId);
+    const elem = document.getElementById(`record-${recordId}`);
+    if (elem) {
+      elem.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
   return (
     <div>
+      {/* ── HealthSync AI Assistant Widget ── */}
+      <HealthAssistant
+        consentId={consentId}
+        patientId={patientId}
+        onSelectRecord={handleSelectRecord}
+      />
       {/* Type chips with live counts */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -156,7 +173,13 @@ export default function TimelineView({ accessToken }) {
               </div>
               <div className="mt-3 border-l-2 border-slate-100 pl-5">
                 {group.items.map((record) => (
-                  <div key={record._id} className="relative mb-3">
+                  <div
+                    key={record._id}
+                    id={`record-${record._id}`}
+                    className={`relative mb-3 rounded-xl transition-all duration-300 ${
+                      selectedRecordId === record._id ? "ring-2 ring-brand-500 shadow-md" : ""
+                    }`}
+                  >
                     <span
                       className={`absolute -left-[27px] top-5 h-3 w-3 rounded-full border-2 border-white ${typeMeta(record.type).dot}`}
                     />

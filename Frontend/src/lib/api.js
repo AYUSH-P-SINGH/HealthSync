@@ -16,7 +16,7 @@ export const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, "");
  * on success, or { success: false, message, errors: [{field, message}] }
  * on failure (see Backend/src/utils/ApiResponse.js and ApiError.js).
  */
-async function request(path, { method = "GET", body, formData, token } = {}) {
+export async function request(path, { method = "GET", body, formData, token } = {}) {
   // For multipart uploads (formData) the browser must set the Content-Type
   // (with boundary) itself, so we only set it for JSON bodies.
   const headers = {};
