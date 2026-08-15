@@ -135,7 +135,7 @@ export default function HealthAssistant({ consentId, patientId, onSelectRecord }
       {/* Success State */}
       {status === "success" && response && (
         <div className="mt-4">
-          <AIAnswer answer={response.answer} confidence={response.confidence} />
+          <AIAnswer answer={response.answer} confidence={response.confidence} responseType={response.responseType} />
           <AICitationList
             citations={response.citations}
             onSelectRecord={onSelectRecord}
