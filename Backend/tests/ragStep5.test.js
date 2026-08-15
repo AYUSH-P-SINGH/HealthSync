@@ -147,4 +147,16 @@ describe('Step 5 — Grounded RAG System & AI API Integration Tests', () => {
     expect(ragResponse.citations).toEqual([]);
     expect(ragResponse.answer).toContain("couldn't find enough relevant information");
   });
+
+  test('5.6 Medical advice query returns ADVICE_REFUSAL responseType with disclaimer', async () => {
+    const ragResponse = await ragService.askRAG({
+      query: 'My HbA1c is 7.2. What medicine should I take?',
+      authenticatedUserId: patient._id.toString(),
+      userRole: 'patient',
+    });
+
+    expect(ragResponse.responseType).toBe('ADVICE_REFUSAL');
+    expect(ragResponse.answer).toContain('does not provide medication or treatment recommendations');
+    expect(ragResponse.answer).toContain('Please consult a qualified healthcare professional');
+  });
 });

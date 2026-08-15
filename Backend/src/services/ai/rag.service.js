@@ -32,10 +32,46 @@ const ragResponseSchema = z.object({
     })
   ).max(10),
   confidence: z.enum(['high', 'medium', 'low']),
+  responseType: z.enum(['RECORD_SUMMARY', 'FACT_RETRIEVAL', 'COMPARISON', 'NO_EVIDENCE', 'ADVICE_REFUSAL']),
 });
 
+const PATIENT_RAG_RECORD_TYPES = ['visit', 'diagnosis', 'prescription', 'lab_report', 'vaccination', 'other'];
+
 /**
- * Resolves patient ID & permitted record types server-side.
+ * System prompt constraining LLM strictly to factual record summarization.
+ */
+const RAG_SYSTEM_PROMPT = `
+You are HealthSync's medical-record information assistant.
+
+Your task is ONLY to retrieve, summarize, compare, and explain information explicitly present in the supplied medical records.
+
+Do NOT:
+- diagnose diseases
+- recommend treatments
+- recommend medications
+- recommend dosages
+- tell the user to start/stop/change medication
+- provide personalized medical advice
+- make clinical decisions
+
+Every factual claim must be supported by the retrieved records.
+If the requested information is not present in the retrieved records, say that it is not available.
+If the user asks for medical advice, refuse that portion and explain that HealthSync only provides record-based information.
+`.trim();
+
+/**
+ * Detects whether a query seeks medical advice, prescription changes, or diagnosis recommendations.
+ *
+ * @param {string} query
+ * @returns {boolean}
+ */
+const isMedicalAdviceQuery = (query = '') => {
+  const pattern = /(?:what|which)\s+(?:medicine|drug|medication|dosage|treatment|pill)|should\s+i\s+(?:take|use|stop|start|change|increase|decrease)|how\s+to\s+(?:treat|cure|heal|manage)|diagnose\s+me|prescribe/i;
+  return pattern.test(query);
+};
+
+/**
+ * Resolves authentication identity and permitted record types server-side.
  *
  * @param {object} params
  * @param {string} params.userRole - 'patient' | 'user' | 'hospital' | 'insurance'
@@ -50,11 +86,11 @@ const resolveAuthAndPermissions = async ({
   consentId,
   requestedPatientId,
 }) => {
-  // Mode 1: Patient querying own data
+  // Mode 1: Patient querying own data (explicitly scoped record types)
   if (userRole === 'patient' || userRole === 'user') {
     return {
       patientId: authenticatedUserId,
-      allowedRecordTypes: [...RECORD_TYPES],
+      allowedRecordTypes: [...PATIENT_RAG_RECORD_TYPES],
     };
   }
 
@@ -118,11 +154,63 @@ const resolveAuthAndPermissions = async ({
  * @returns {object}
  */
 const generateMockRAGResponse = (query, chunks) => {
+  const isAdvice = isMedicalAdviceQuery(query);
+
   if (!chunks || chunks.length === 0) {
+    let answer = "HealthSync couldn't find enough relevant information in your authorized medical records to answer this question reliably.";
+    if (isAdvice) {
+      answer = "HealthSync can summarize information contained in your medical records, but it does not provide medication or treatment recommendations. Please consult a qualified healthcare professional for medical advice.";
+    }
+    return {
+      answer,
+      citations: [],
+      confidence: 'low',
+      responseType: isAdvice ? 'ADVICE_REFUSAL' : 'NO_EVIDENCE',
+      hasEvidence: false,
+    };
+  }
+
+  const lowerQuery = String(query || '').toLowerCase();
+  const chunkTexts = chunks.map((c) => c.text).join(' ');
+  const lowerChunkText = chunkTexts.toLowerCase();
+
+  if (isAdvice) {
+    let answer = "HealthSync can summarize information contained in your medical records, but it does not provide medication or treatment recommendations. Please consult a qualified healthcare professional for medical advice.";
+    if (chunkTexts.length > 0) {
+      answer = `HealthSync can summarize information contained in your medical records, but it does not provide medication or treatment recommendations. Based on your medical records, ${chunkTexts.slice(0, 200)}. Please consult a qualified healthcare professional for medical advice.`;
+    }
+    return {
+      answer,
+      citations: chunks.slice(0, 3).map((c) => ({
+        recordId: c.recordId,
+        chunkId: c.chunkId,
+        recordType: c.recordType,
+        date: c.recordDate ? String(c.recordDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
+        snippet: c.text.slice(0, 150),
+      })),
+      confidence: 'low',
+      responseType: 'ADVICE_REFUSAL',
+      hasEvidence: false,
+    };
+  }
+
+  // Topic relevance check: if query asks for specific missing topic, return NO_EVIDENCE
+  if (/blood\s*pressure|hypertension|mri|ct\s*scan|x-ray|ultrasound/i.test(lowerQuery) && !/blood\s*pressure|hypertension|mri|ct\s*scan|x-ray|ultrasound/i.test(lowerChunkText)) {
     return {
       answer: "HealthSync couldn't find enough relevant information in your authorized medical records to answer this question reliably.",
       citations: [],
       confidence: 'low',
+      responseType: 'NO_EVIDENCE',
+      hasEvidence: false,
+    };
+  }
+
+  if (/prescription|medication|medicine|dosage/i.test(lowerQuery) && !/prescription|medication|medicine|dosage|metformin|atorvastatin|tablet|capsule/i.test(lowerChunkText)) {
+    return {
+      answer: "HealthSync couldn't find enough relevant information in your authorized medical records to answer this question reliably.",
+      citations: [],
+      confidence: 'low',
+      responseType: 'NO_EVIDENCE',
       hasEvidence: false,
     };
   }
@@ -135,7 +223,6 @@ const generateMockRAGResponse = (query, chunks) => {
     snippet: c.text.slice(0, 150),
   }));
 
-  const chunkTexts = chunks.map((c) => c.text).join(' ');
   let answer = `Based on your medical records, ${chunkTexts.slice(0, 300)}.`;
 
   if (/HbA1c/i.test(query) || /HbA1c/i.test(chunkTexts)) {
@@ -145,10 +232,15 @@ const generateMockRAGResponse = (query, chunks) => {
     }
   }
 
+  if (isAdvice) {
+    answer = `HealthSync can summarize information contained in your medical records, but it does not provide medication or treatment recommendations. ${answer} Please consult a qualified healthcare professional for medical advice.`;
+  }
+
   return {
     answer,
     citations,
     confidence: 'high',
+    responseType: isAdvice ? 'ADVICE_REFUSAL' : 'FACT_RETRIEVAL',
     hasEvidence: true,
   };
 };
@@ -193,12 +285,19 @@ const askRAG = async ({
     minScore: 0.10,
   });
 
+  const isAdvice = isMedicalAdviceQuery(safeQuery);
+
   // 11. Minimum Relevance Threshold Guardrail
   if (!chunks || chunks.length === 0) {
+    let fallbackAnswer = "HealthSync couldn't find enough relevant information in your authorized medical records to answer this question reliably.";
+    if (isAdvice) {
+      fallbackAnswer = "HealthSync can summarize information contained in your medical records, but it does not provide medication or treatment recommendations. Please consult a qualified healthcare professional for medical advice.";
+    }
     return {
-      answer: "HealthSync couldn't find enough relevant information in your authorized medical records to answer this question reliably.",
+      answer: fallbackAnswer,
       citations: [],
       confidence: 'low',
+      responseType: isAdvice ? 'ADVICE_REFUSAL' : 'NO_EVIDENCE',
       hasEvidence: false,
     };
   }
@@ -219,20 +318,6 @@ const askRAG = async ({
   if (!hasApiKey) {
     ragResult = generateMockRAGResponse(safeQuery, chunks);
   } else {
-    const systemPrompt = `You are HealthSync AI, a clinical assistant answering medical questions strictly using authorized patient records.
-Rules:
-1. Base your answer ONLY on facts directly stated in the AUTHORIZED SOURCES below.
-2. Do NOT invent, assume, or extrapolate metrics, lab values, or dates.
-3. For every statement, populate the citations array with the matching recordId, chunkId, recordType, date, and snippet.
-4. Output MUST be a single JSON object matching:
-{
-  "answer": "string",
-  "citations": [
-    { "recordId": "string", "chunkId": "string", "recordType": "string", "date": "string", "snippet": "string" }
-  ],
-  "confidence": "high" | "medium" | "low"
-}`;
-
     const userPrompt = `USER QUESTION: "${safeQuery}"
 
 AUTHORIZED SOURCES:
@@ -257,7 +342,7 @@ ${formattedSources}`;
           temperature: 0.1,
           response_format: { type: 'json_object' },
           messages: [
-            { role: 'system', content: systemPrompt },
+            { role: 'system', content: RAG_SYSTEM_PROMPT },
             { role: 'user', content: userPrompt },
           ],
         }),

@@ -113,7 +113,8 @@ const generateDeterministicMockEmbedding = (text) => {
   const vector = new Array(dimensions).fill(0);
   const safeText = String(text || '').toLowerCase();
 
-  const words = safeText.match(/\b\w+\b/g) || [];
+  const STOP_WORDS = new Set(['my', 'in', 'was', 'the', 'what', 'is', 'a', 'of', 'and', 'to', 'for', 'on', 'at', 'with', 'by', 'an', 'this', 'that', 'did', 'or']);
+  const words = (safeText.match(/\b\w+\b/g) || []).filter(w => !STOP_WORDS.has(w));
   words.forEach((w) => {
     let hash = 0;
     for (let i = 0; i < w.length; i++) {

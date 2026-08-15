@@ -130,12 +130,13 @@ const calculateCosineSimilarity = (v1, v2) => {
  * @param {number} [params.limit=5] - Maximum chunks to return
  * @returns {Promise<Array<{ recordId: string, chunkId: string, text: string, recordType: string, recordTitle: string, recordDate: string, score: number }>>}
  */
-const searchSimilarChunks = async ({ query, patientId, allowedRecordTypes = [], limit = 5, minScore = 0.10 }) => {
+const searchSimilarChunks = async ({ query, patientId, allowedRecordTypes = [], limit = 5, minScore }) => {
   const safeQuery = String(query || '').trim();
   if (!safeQuery || !patientId || !Array.isArray(allowedRecordTypes) || allowedRecordTypes.length === 0) {
     return [];
   }
 
+  const configuredMinScore = Number(process.env.RAG_MIN_SCORE) || (minScore !== undefined ? Number(minScore) : 0.10);
   const patientObjectId = new mongoose.Types.ObjectId(patientId);
   const targetLimit = Math.max(1, Math.min(Number(limit) || 5, 20));
 
@@ -185,14 +186,14 @@ const searchSimilarChunks = async ({ query, patientId, allowedRecordTypes = [], 
             recordDate: res.recordDate ? new Date(res.recordDate).toISOString() : new Date().toISOString(),
             score: Number(res.score || 0),
           }))
-          .filter((chunk) => chunk.score >= minScore);
+          .filter((chunk) => chunk.score >= configuredMinScore);
       }
     } catch (atlasErr) {
       // Atlas $vectorSearch index not available in local MongoDB — fall through to in-memory cosine similarity fallback
       logger.debug('Local cosine similarity fallback used (Atlas $vectorSearch unavailable)');
     }
 
-    // 3. Fallback: Fetch candidate chunks matching security filter strictly and compute cosine similarity
+    // 3. Fallback: Fetch candidate chunks matching security filter strictly (INCLUDING embedding for vector calculation)
     const candidateChunks = await MedicalRecordChunk.find(filterQuery)
       .select('record text metadata embedding')
       .lean();
@@ -201,22 +202,24 @@ const searchSimilarChunks = async ({ query, patientId, allowedRecordTypes = [], 
       return [];
     }
 
+    // 4. Calculate cosine similarity, filter by minScore, sort, and strip embedding before return
     const scoredResults = candidateChunks
       .map((chunk) => {
-        const score = calculateCosineSimilarity(queryVector, chunk.embedding);
+        const score = calculateCosineSimilarity(queryVector, chunk.embedding || []);
+        const { embedding, ...chunkData } = chunk;
         return {
-          recordId: String(chunk.record),
-          chunkId: String(chunk._id),
-          text: chunk.text,
-          recordType: chunk.metadata?.recordType || 'other',
-          recordTitle: chunk.metadata?.recordTitle || '',
-          recordDate: chunk.metadata?.recordDate
-            ? new Date(chunk.metadata.recordDate).toISOString()
+          recordId: String(chunkData.record),
+          chunkId: String(chunkData._id),
+          text: chunkData.text,
+          recordType: chunkData.metadata?.recordType || 'other',
+          recordTitle: chunkData.metadata?.recordTitle || '',
+          recordDate: chunkData.metadata?.recordDate
+            ? new Date(chunkData.metadata.recordDate).toISOString()
             : new Date().toISOString(),
           score,
         };
       })
-      .filter((chunk) => chunk.score >= minScore)
+      .filter((chunk) => chunk.score >= configuredMinScore)
       .sort((a, b) => b.score - a.score)
       .slice(0, targetLimit);
 

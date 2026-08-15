@@ -67,7 +67,7 @@ const validateGrounding = ({ answer, citations = [], chunks = [] }) => {
   // 2. Citation-to-source mapping validation
   const validCitations = validateCitations(citations, chunks);
 
-  // 3. Numerical & metric claim validation
+  // 3. Numerical & metric claim validation (against all chunks AND specific cited chunks)
   const combinedSourceText = chunks.map((c) => c.text || '').join(' ').toLowerCase();
   const answerNumericalTokens = extractNumericalTokens(safeAnswer);
 
@@ -77,6 +77,23 @@ const validateGrounding = ({ answer, citations = [], chunks = [] }) => {
       const digitsOnly = token.replace(/[^\d.]/g, '');
       if (digitsOnly && !combinedSourceText.includes(digitsOnly)) {
         ungroundedTokens.push(token);
+      }
+    }
+  }
+
+  // 4. Citation-specific claim consistency check
+  const chunkMap = new Map(chunks.map((c) => [String(c.chunkId || c._id || c.recordId || c.record), c.text || '']));
+  for (const citation of validCitations) {
+    const citedText = (chunkMap.get(String(citation.chunkId)) || chunkMap.get(String(citation.recordId)) || '').toLowerCase();
+    if (citation.excerpt) {
+      const excerptTokens = extractNumericalTokens(citation.excerpt);
+      for (const tok of excerptTokens) {
+        if (!citedText.includes(tok)) {
+          const digits = tok.replace(/[^\d.]/g, '');
+          if (digits && !citedText.includes(digits)) {
+            ungroundedTokens.push(`citation_mismatch:${tok}`);
+          }
+        }
       }
     }
   }
